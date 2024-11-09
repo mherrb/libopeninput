@@ -285,21 +285,22 @@ libinput_udev_assign_seat(struct libinput *libinput, const char *seat_id)
 	uint64_t time;
 	struct timespec ts;
 	struct libinput_event *event;
+	char name[32];
+	int fd;
 
 	/* Add standard devices */
 	for (int i = 0; i < 10; i++) {
-		char name[32];
-		int fd;
 		snprintf(name, sizeof(name), "/dev/wskbd%d", i);
 		if ((fd = open_restricted(libinput, name, O_RDWR|O_NONBLOCK)) >= 0) {
 			close_restricted(libinput, fd);
 			libinput_path_add_device(libinput, name);
 		}
-		snprintf(name, sizeof(name), "/dev/wsmouse%d", i);
-		if ((fd = open_restricted(libinput, name, O_RDWR|O_NONBLOCK)) >= 0) {
-			close_restricted(libinput, fd);
-			libinput_path_add_device(libinput, name);
-		}
+	}
+	/* only one pointer through the mux */
+	strlcpy(name, "/dev/wsmouse", sizeof(name));
+	if ((fd = open_restricted(libinput, name, O_RDWR|O_NONBLOCK)) >= 0) {
+		close_restricted(libinput, fd);
+		libinput_path_add_device(libinput, name);
 	}
 
 	seat = wscons_seat_get(libinput, default_seat, default_seat_name);
