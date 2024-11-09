@@ -17,6 +17,7 @@ struct TransMapRec {
 struct wscons_device {
 	struct libinput_device base;
 	enum libinput_device_capability capability;
+	struct wsmux_device_list *device_list;
 	struct TransMapRec *scanCodeMap;
 };
 
@@ -27,7 +28,7 @@ wscons_device(struct libinput_device *device)
 	return container_of(device, struct wscons_device, base);
 }
 extern int wscons_keyboard_init(struct wscons_device *);
-extern uint32_t wskey_transcode(struct TransMapRec *, int);
+extern uint32_t wskey_transcode(struct wscons_device *, int, int);
 extern void post_device_event(struct libinput_device *, uint64_t ,
     enum libinput_event_type , struct libinput_event *);
 

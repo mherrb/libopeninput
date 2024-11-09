@@ -496,51 +496,46 @@ struct TransMapRec wsXt = {
     wsXtMap
 };
 
-static void
-printWsType(struct libinput *libinput, const char *name, const char *type)
-{
-    log_info(libinput, "%s: Keyboard type: %s\n", name, type);
-}
-
 int
 wscons_keyboard_init(struct wscons_device *device)
 {
 	struct libinput_device *libinput_device = &device->base;
 	struct libinput *libinput = libinput_device->seat->libinput;
+	struct wsmux_device_list *list;
 	int fd = libinput_device->fd;
-	int type;
 
-	if (ioctl(fd, WSKBDIO_GTYPE, &type) == -1) {
-		log_error(libinput, "getting WSKBD type: %s.\n",
+	list = malloc(sizeof(struct wsmux_device_list));
+	if (list == NULL)
+		return -1;
+
+	if (ioctl(fd, WSMUXIO_LIST_DEVICES, list) == -1) {
+		log_error(libinput, "getting device list: %s.\n",
 		    strerror(errno));
 		return -1;
 	}
-	switch (type) {
-	case WSKBD_TYPE_PC_XT:
-		printWsType(libinput, libinput_device->devname, "XT");
-		device->scanCodeMap = &wsXt;
-		break;
-	case WSKBD_TYPE_PC_AT:
-		printWsType(libinput, libinput_device->devname, "AT");
-		device->scanCodeMap = &wsXt;
-		break;
-	case WSKBD_TYPE_USB:
-		printWsType(libinput, libinput_device->devname, "USB");
-		device->scanCodeMap = &wsUsb;
-		break;
-	default:
-		log_error(libinput, "Unsupported wskbd type %d\n", type);
-		device->scanCodeMap = NULL;
-		break;
-	}
+	device->device_list = list;
 	return 0;
 }
 
 uint32_t
-wskey_transcode(struct TransMapRec *map, int wskey)
+wskey_transcode(struct wscons_device *device, int subdev, int wskey)
 {
-	if (map == NULL)
+	int type = device->device_list->devices[subdev].subtype;
+	struct TransMapRec *map;
+
+	switch (type) {
+	case WSKBD_TYPE_PC_XT:
+		map = &wsXt;
+		break;
+	case WSKBD_TYPE_PC_AT:
+		map = &wsXt;
+		break;
+	case WSKBD_TYPE_USB:
+		map = &wsUsb;
+		break;
+	default:
 		return KEY_UNKNOWN;
+	}
 	if (wskey < map->begin || wskey >= map->end)
 		return KEY_UNKNOWN;
 	return map->map[wskey];

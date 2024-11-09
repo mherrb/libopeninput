@@ -21,6 +21,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <sys/ioctl.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -50,7 +51,9 @@ udev_input_enable(struct libinput *libinput)
 
 	seat = wscons_seat_get(libinput, default_seat, default_seat_name);
 	list_for_each(device, &seat->devices_list, link) {
+		int version = WSEVENT_VERSION;
 		device->fd = open_restricted(libinput, device->devname, O_RDWR);
+		ioctl(device->fd, WSKBDIO_SETVERSION, &version);
 		device->source =
 		    libinput_add_fd(libinput, device->fd,
 			wscons_device_dispatch, device);
@@ -105,7 +108,7 @@ static const struct libinput_interface_backend interface_backend = {
 };
 
 static void
-wscons_process(struct libinput_device *device, struct wscons_event *wsevent)
+wscons_process(struct libinput_device *device, struct wscons_event_ex *wsevent)
 {
 	enum libinput_button_state bstate;
 	enum libinput_key_state kstate;
@@ -131,7 +134,8 @@ wscons_process(struct libinput_device *device, struct wscons_event *wsevent)
 			old_value = key;
 		}
 		keyboard_notify_key(device, time,
-		    wskey_transcode(wscons_device(device)->scanCodeMap, key), kstate);
+		    wskey_transcode(wscons_device(device),
+			wsevent->device, key), kstate);
 		break;
 
 	case WSCONS_EVENT_MOUSE_UP:
@@ -213,15 +217,15 @@ static void
 wscons_device_dispatch(void *data)
 {
 	struct libinput_device *device = data;
-	struct wscons_event wsevents[32];
+	struct wscons_event_ex wsevents[32];
 	ssize_t len;
 	int count, i;
 
-	len = read(device->fd, wsevents, sizeof(struct wscons_event));
-	if (len <= 0 || (len % sizeof(struct wscons_event)) != 0)
+	len = read(device->fd, wsevents, sizeof(struct wscons_event_ex));
+	if (len <= 0 || (len % sizeof(struct wscons_event_ex)) != 0)
 		return;
 
-	count = len / sizeof(struct wscons_event);
+	count = len / sizeof(struct wscons_event_ex);
 	for (i = 0; i < count; i++) {
 		wscons_process(device, &wsevents[i]);
 	}
@@ -289,12 +293,10 @@ libinput_udev_assign_seat(struct libinput *libinput, const char *seat_id)
 	int fd;
 
 	/* Add standard devices */
-	for (int i = 0; i < 10; i++) {
-		snprintf(name, sizeof(name), "/dev/wskbd%d", i);
-		if ((fd = open_restricted(libinput, name, O_RDWR|O_NONBLOCK)) >= 0) {
-			close_restricted(libinput, fd);
-			libinput_path_add_device(libinput, name);
-		}
+	strlcpy(name, "/dev/wskbd", sizeof(name));
+	if ((fd = open_restricted(libinput, name, O_RDWR|O_NONBLOCK)) >= 0) {
+		close_restricted(libinput, fd);
+		libinput_path_add_device(libinput, name);
 	}
 	/* only one pointer through the mux */
 	strlcpy(name, "/dev/wsmouse", sizeof(name));
@@ -355,7 +357,7 @@ libinput_path_add_device(struct libinput *libinput,
 	struct libinput_seat *seat = NULL;
 	struct libinput_device *device = NULL;
 	struct wscons_device *wscons_device;
-	int fd;
+	int fd, version = WSEVENT_VERSION;
 
 	fd = open_restricted(libinput, path,
 			     O_RDWR | O_NONBLOCK | O_CLOEXEC);
@@ -365,7 +367,12 @@ libinput_path_add_device(struct libinput *libinput,
 			 path, strerror(-fd));
 		return NULL;
 	}
-
+	if (ioctl(fd, WSKBDIO_SETVERSION, &version) == -1) {
+		log_info(libinput,
+		    "setting input device '%s' version failed (%s).\n",
+		    path, strerror(errno));
+		return NULL;
+	}
 	wscons_device = calloc(1, sizeof(*wscons_device));
 	if (wscons_device == NULL)
 		return NULL;
