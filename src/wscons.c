@@ -219,6 +219,24 @@ wscons_process(struct libinput_device *device, struct wscons_event_ex *wsevent)
 	case WSCONS_EVENT_TOUCH_RESET:
 		/* ignore those */
 		break;
+#ifdef WSCONS_EVENT_WSMUX_DEVICE
+	case WSCONS_EVENT_WSMUX_DEVICE:
+		fprintf(stderr, "Mux event %u %d\n",
+		    wsevent->device, wsevent->value);
+		switch (wsevent->value) {
+		case WSMUX_ATTACH_DEVICE:
+			fprintf(stderr, "attach device %x\n", wsevent->device);
+		break;
+		case WSMUX_DETACH_DEVICE:
+			fprintf(stderr, "detach device %x\n", wsevent->device);
+		break;
+		}
+		if (dev->capability == LIBINPUT_DEVICE_CAP_KEYBOARD) {
+			fprintf(stderr, "reconfig keyboards\n");
+			wscons_keyboard_init(dev);
+		}
+		break;
+#endif
 	default:
 		fprintf(stderr, "unkown event: %x\n" , wsevent->type);
 		/* assert(1 == 0); */
