@@ -31,7 +31,7 @@ wscons_device(struct libinput_device *device)
 	return container_of(device, struct wscons_device, base);
 }
 extern int wscons_keyboard_init(struct wscons_device *);
-extern uint32_t wskey_transcode(struct TransMapRec *, int);
+extern uint32_t wskey_transcode(struct wscons_event_ex *);
 extern void post_device_event(struct libinput_device *, uint64_t ,
     enum libinput_event_type , struct libinput_event *);
 

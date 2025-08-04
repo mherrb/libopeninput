@@ -21,6 +21,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <sys/ioctl.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -110,7 +111,7 @@ static const struct libinput_interface_backend interface_backend = {
 };
 
 static void
-wscons_process(struct libinput_device *device, struct wscons_event *wsevent)
+wscons_process(struct libinput_device *device, struct wscons_event_ex *wsevent)
 {
 	enum libinput_button_state bstate;
 	enum libinput_key_state kstate;
@@ -137,7 +138,7 @@ wscons_process(struct libinput_device *device, struct wscons_event *wsevent)
 			old_value = key;
 		}
 		keyboard_notify_key(device, time,
-		    wskey_transcode(wscons_device(device)->scanCodeMap, key), kstate);
+		    wskey_transcode(wsevent), kstate);
 		break;
 
 	case WSCONS_EVENT_MOUSE_UP:
@@ -229,15 +230,15 @@ static void
 wscons_device_dispatch(void *data)
 {
 	struct libinput_device *device = data;
-	struct wscons_event wsevents[32];
+	struct wscons_event_ex wsevents[32];
 	ssize_t len;
 	int count, i;
 
-	len = read(device->fd, wsevents, sizeof(struct wscons_event));
-	if (len <= 0 || (len % sizeof(struct wscons_event)) != 0)
+	len = read(device->fd, wsevents, sizeof(struct wscons_event_ex));
+	if (len <= 0 || (len % sizeof(struct wscons_event_ex)) != 0)
 		return;
 
-	count = len / sizeof(struct wscons_event);
+	count = len / sizeof(struct wscons_event_ex);
 	for (i = 0; i < count; i++) {
 		wscons_process(device, &wsevents[i]);
 	}
@@ -301,21 +302,21 @@ libinput_udev_assign_seat(struct libinput *libinput, const char *seat_id)
 	uint64_t time;
 	struct timespec ts;
 	struct libinput_event *event;
+	char name[32];
+	int fd;
 
 	/* Add standard devices */
-	for (int i = 0; i < 10; i++) {
-		char name[32];
-		int fd;
-		snprintf(name, sizeof(name), "/dev/wskbd%d", i);
-		if ((fd = open_restricted(libinput, name, O_RDWR|O_NONBLOCK)) >= 0) {
-			close_restricted(libinput, fd);
-			libinput_path_add_device(libinput, name);
-		}
-		snprintf(name, sizeof(name), "/dev/wsmouse%d", i);
-		if ((fd = open_restricted(libinput, name, O_RDWR|O_NONBLOCK)) >= 0) {
-			close_restricted(libinput, fd);
-			libinput_path_add_device(libinput, name);
-		}
+	snprintf(name, sizeof(name), "/dev/wskbd");
+	if ((fd = open_restricted(libinput, name,
+		    O_RDWR|O_NONBLOCK)) >= 0) {
+		close_restricted(libinput, fd);
+		libinput_path_add_device(libinput, name);
+	}
+	snprintf(name, sizeof(name), "/dev/wsmouse");
+	if ((fd = open_restricted(libinput, name,
+		    O_RDWR|O_NONBLOCK)) >= 0) {
+		close_restricted(libinput, fd);
+		libinput_path_add_device(libinput, name);
 	}
 
 	seat = wscons_seat_get(libinput, default_seat, default_seat_name);
@@ -510,12 +511,17 @@ static int
 wscons_device_init(struct wscons_device *wscons_device)
 {
 	struct libinput_device *device = &wscons_device->base;
+	int version = 1;
 
 	if (strncmp(device->devname, "/dev/wsmouse", 12) == 0) {
+		if (ioctl(device->fd, WSMOUSEIO_SETVERSION, &version) == -1)
+			return -1;
 		/* XXX handle tablets and touchpanel */
 		wscons_device->capability = LIBINPUT_DEVICE_CAP_POINTER;
 		wscons_init_accel(wscons_device, LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE);
 	} else if (strncmp(device->devname, "/dev/wskbd", 10) == 0)  {
+		if (ioctl(device->fd, WSKBDIO_SETVERSION, &version) == -1)
+			return -1;
 		wscons_device->capability = LIBINPUT_DEVICE_CAP_KEYBOARD;
 		if (wscons_keyboard_init(wscons_device) == -1)
 			return -1;

@@ -1,5 +1,6 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
+// #include <dev/wscons/wsconsio.h>
 #include <sys/time.h>
 #include "wscons.h"
 #include "input-event-codes.h"
@@ -496,6 +497,8 @@ struct TransMapRec wsXt = {
     wsXtMap
 };
 
+static struct TransMapRec *muxmap[WSMUX_MAXDEV];
+
 static void
 printWsType(struct libinput *libinput, const char *name, const char *type)
 {
@@ -507,41 +510,54 @@ wscons_keyboard_init(struct wscons_device *device)
 {
 	struct libinput_device *libinput_device = &device->base;
 	struct libinput *libinput = libinput_device->seat->libinput;
-	int fd = libinput_device->fd;
-	int type;
+	struct wsmux_device_list devs;
+	int i, fd = libinput_device->fd;
+	u_int type;
 
-	if (ioctl(fd, WSKBDIO_GTYPE, &type) == -1) {
-		log_error(libinput, "getting WSKBD type: %s.\n",
+	if (ioctl(fd, WSMUXIO_LIST_DEVICES, &devs) == -1) {
+		log_error(libinput, "getting WSKBD list: %s.\n",
 		    strerror(errno));
 		return -1;
 	}
-	switch (type) {
-	case WSKBD_TYPE_PC_XT:
-		printWsType(libinput, libinput_device->devname, "XT");
-		device->scanCodeMap = &wsXt;
-		break;
-	case WSKBD_TYPE_PC_AT:
-		printWsType(libinput, libinput_device->devname, "AT");
-		device->scanCodeMap = &wsXt;
-		break;
-	case WSKBD_TYPE_USB:
-		printWsType(libinput, libinput_device->devname, "USB");
-		device->scanCodeMap = &wsUsb;
-		break;
-	default:
-		log_error(libinput, "Unsupported wskbd type %d\n", type);
-		device->scanCodeMap = NULL;
-		break;
+	for (i = 0; i < devs.ndevices; i++) {
+		log_error(libinput, "dev %i type %d %d\n",
+		    i, devs.devices[i].type,
+		    devs.devices[i].idx);
+		type = i;
+		if (ioctl(fd, WSMUXIO_GTYPE, &type) == -1) {
+			log_error(libinput,
+			    "getting type of sub-device %d: %d\n", i, errno);
+			return -1;
+		}
+		switch (type) {
+		case WSKBD_TYPE_PC_XT:
+			printWsType(libinput, libinput_device->devname, "XT");
+			muxmap[i] = &wsXt;
+			break;
+		case WSKBD_TYPE_PC_AT:
+			printWsType(libinput, libinput_device->devname, "AT");
+			muxmap[i] = &wsXt;
+			break;
+		case WSKBD_TYPE_USB:
+			printWsType(libinput, libinput_device->devname, "USB");
+			muxmap[i] = &wsUsb;
+			break;
+		default:
+			log_error(libinput, "Unsupported wskbd type %d\n", type);
+			muxmap[i] = NULL;
+			break;
+		}
 	}
 	return 0;
 }
 
 uint32_t
-wskey_transcode(struct TransMapRec *map, int wskey)
+wskey_transcode(struct wscons_event_ex *ev)
 {
+	struct TransMapRec *map = muxmap[ev->device];
 	if (map == NULL)
 		return KEY_UNKNOWN;
-	if (wskey < map->begin || wskey >= map->end)
+	if (ev->value < map->begin || ev->value >= map->end)
 		return KEY_UNKNOWN;
-	return map->map[wskey];
+	return map->map[ev->value];
 }
