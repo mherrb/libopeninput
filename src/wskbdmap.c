@@ -514,6 +514,7 @@ wscons_keyboard_init(struct wscons_device *device)
 	int i, fd = libinput_device->fd;
 	u_int type;
 
+	memset(muxmap, 0, sizeof(muxmap));
 	if (ioctl(fd, WSMUXIO_LIST_DEVICES, &devs) == -1) {
 		log_error(libinput, "getting WSKBD list: %s.\n",
 		    strerror(errno));
