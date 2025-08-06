@@ -174,9 +174,9 @@ wscons_process(struct libinput_device *device, struct wscons_event_ex *wsevent)
 
 		if (dev->pointer.filter) {
 			accel = filter_dispatch(dev->pointer.filter,
-			                        &raw,
-			                	device,
-			                	time);
+						&raw,
+						device,
+						time);
 		} else {
 			accel.x = raw.x;
 			accel.y = raw.y;
