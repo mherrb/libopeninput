@@ -1621,6 +1621,12 @@ libinput_tablet_tool_get_tool_id(struct libinput_tablet_tool *tool)
 	return tool->tool_id;
 }
 
+LIBINPUT_EXPORT const char *
+libinput_tablet_tool_get_name(struct libinput_tablet_tool *tool)
+{
+	return NULL;
+}
+
 LIBINPUT_EXPORT int
 libinput_tablet_tool_is_unique(struct libinput_tablet_tool *tool)
 {
@@ -4776,6 +4782,37 @@ libinput_device_config_dwt_get_default_enabled(struct libinput_device *device)
 	return device->config.dwt->get_default_enabled(device);
 }
 
+LIBINPUT_EXPORT enum libinput_config_status
+libinput_device_config_dwt_set_timeout(struct libinput_device *device, uint32_t millis)
+{
+	if (millis == 0)
+		return LIBINPUT_CONFIG_STATUS_INVALID;
+
+	if (!libinput_device_config_dwt_is_available(device))
+		return LIBINPUT_CONFIG_STATUS_UNSUPPORTED;
+
+	usec_t timeout = usec_from_millis(millis);
+	return device->config.dwt->set_timeout(device, timeout);
+}
+
+LIBINPUT_EXPORT uint32_t
+libinput_device_config_dwt_get_timeout(struct libinput_device *device)
+{
+	if (!libinput_device_config_dwt_is_available(device))
+		return 0;
+
+	return usec_to_millis(device->config.dwt->get_timeout(device));
+}
+
+LIBINPUT_EXPORT uint32_t
+libinput_device_config_dwt_get_default_timeout(struct libinput_device *device)
+{
+	if (!libinput_device_config_dwt_is_available(device))
+		return 0;
+
+	return usec_to_millis(device->config.dwt->get_default_timeout(device));
+}
+
 LIBINPUT_EXPORT int
 libinput_device_config_dwtp_is_available(struct libinput_device *device)
 {
@@ -4816,6 +4853,37 @@ libinput_device_config_dwtp_get_default_enabled(struct libinput_device *device)
 		return LIBINPUT_CONFIG_DWTP_DISABLED;
 
 	return device->config.dwtp->get_default_enabled(device);
+}
+
+LIBINPUT_EXPORT enum libinput_config_status
+libinput_device_config_dwtp_set_timeout(struct libinput_device *device, uint32_t millis)
+{
+	if (millis == 0)
+		return LIBINPUT_CONFIG_STATUS_INVALID;
+
+	if (!libinput_device_config_dwtp_is_available(device))
+		return LIBINPUT_CONFIG_STATUS_UNSUPPORTED;
+
+	usec_t timeout = usec_from_millis(millis);
+	return device->config.dwtp->set_timeout(device, timeout);
+}
+
+LIBINPUT_EXPORT uint32_t
+libinput_device_config_dwtp_get_timeout(struct libinput_device *device)
+{
+	if (!libinput_device_config_dwtp_is_available(device))
+		return 0;
+
+	return usec_to_millis(device->config.dwtp->get_timeout(device));
+}
+
+LIBINPUT_EXPORT uint32_t
+libinput_device_config_dwtp_get_default_timeout(struct libinput_device *device)
+{
+	if (!libinput_device_config_dwtp_is_available(device))
+		return 0;
+
+	return usec_to_millis(device->config.dwtp->get_default_timeout(device));
 }
 
 LIBINPUT_EXPORT int
