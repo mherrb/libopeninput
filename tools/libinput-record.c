@@ -38,7 +38,6 @@
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
 #include <sys/stat.h>
-#include <sys/timerfd.h>
 #include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
@@ -108,7 +107,7 @@ struct hidraw {
 };
 
 struct record_context {
-	int timeout;
+	usec_t timeout;
 	bool show_keycodes;
 
 	usec_t offset;
@@ -130,8 +129,7 @@ struct record_context {
 	struct list sources;
 
 	struct {
-		bool had_events_since_last_time;
-		bool skipped_timer_print;
+		usec_t last_wall_time;
 	} timestamps;
 
 	bool had_events;
@@ -1353,13 +1351,13 @@ handle_events(struct record_context *ctx, struct record_device *d)
 }
 
 static void
-print_libinput_header(FILE *fp, int timeout)
+print_libinput_header(FILE *fp, usec_t timeout)
 {
 	iprintf(fp, I_TOPLEVEL, "libinput:\n");
 	iprintf(fp, I_LIBINPUT, "version: \"%s\"\n", LIBINPUT_VERSION);
 	iprintf(fp, I_LIBINPUT, "git: \"%s\"\n", LIBINPUT_GIT_VERSION);
-	if (timeout > 0)
-		iprintf(fp, I_LIBINPUT, "autorestart: %d\n", timeout);
+	if (!usec_is_zero(timeout))
+		iprintf(fp, I_LIBINPUT, "autorestart: %u\n", usec_to_seconds(timeout));
 }
 
 static void
@@ -1519,7 +1517,8 @@ print_description(FILE *fp, struct libevdev *dev)
 		break;
 	}
 
-	iprintf(fp, I_EVDEV, "# Name: %s\n", libevdev_get_name(dev));
+	_autofree_ char *name = str_sanitize(libevdev_get_name(dev));
+	iprintf(fp, I_EVDEV, "# Name: %s\n", name ? name : "");
 	iprintf(fp,
 		I_EVDEV,
 		"# ID: bus 0x%04x%svendor 0x%04x product 0x%04x version 0x%04x\n",
@@ -1570,7 +1569,8 @@ print_description(FILE *fp, struct libevdev *dev)
 static void
 print_bits_info(FILE *fp, struct libevdev *dev)
 {
-	iprintf(fp, I_EVDEV, "name: \"%s\"\n", libevdev_get_name(dev));
+	_autofree_ char *name = str_sanitize(libevdev_get_name(dev));
+	iprintf(fp, I_EVDEV, "name: \"%s\"\n", name ? name : "");
 	iprintf(fp,
 		I_EVDEV,
 		"id: [%d, %d, %d, %d]\n",
@@ -1936,7 +1936,8 @@ select_device(void)
 		if (rc != 0)
 			continue;
 
-		fprintf(stderr, "%s%s:	%s\n", prefix, path, libevdev_get_name(device));
+		_autofree_ char *name = str_sanitize(libevdev_get_name(device));
+		fprintf(stderr, "%s%s:	%s\n", prefix, path, name ? name : "");
 		libevdev_free(device);
 		available_devices++;
 	}
@@ -2071,21 +2072,6 @@ print_wall_time(struct record_context *ctx)
 	}
 }
 
-static void
-arm_timer(int timerfd)
-{
-	time_t t = time(NULL);
-	struct tm tm;
-	struct itimerspec interval = {
-		.it_value = { 0, 0 },
-		.it_interval = { 5, 0 },
-	};
-
-	localtime_r(&t, &tm);
-	interval.it_value.tv_sec = 5 - (tm.tm_sec % 5);
-	timerfd_settime(timerfd, 0, &interval, NULL);
-}
-
 static struct source *
 add_source(struct record_context *ctx,
 	   int fd,
@@ -2132,33 +2118,11 @@ signalfd_dispatch(struct record_context *ctx, int fd, void *data)
 }
 
 static void
-timefd_dispatch(struct record_context *ctx, int fd, void *data)
-{
-	char discard[64];
-
-	(void)read(fd, discard, sizeof(discard));
-
-	if (ctx->timestamps.had_events_since_last_time) {
-		print_wall_time(ctx);
-		ctx->timestamps.had_events_since_last_time = false;
-		ctx->timestamps.skipped_timer_print = false;
-	} else {
-		ctx->timestamps.skipped_timer_print = true;
-	}
-}
-
-static void
 evdev_dispatch(struct record_context *ctx, int fd, void *data)
 {
 	struct record_device *this_device = data;
 
-	if (ctx->timestamps.skipped_timer_print) {
-		print_wall_time(ctx);
-		ctx->timestamps.skipped_timer_print = false;
-	}
-
 	ctx->had_events = true;
-	ctx->timestamps.had_events_since_last_time = true;
 
 	handle_events(ctx, this_device);
 }
@@ -2179,7 +2143,6 @@ hidraw_dispatch(struct record_context *ctx, int fd, void *data)
 	struct hidraw *hidraw = data;
 
 	ctx->had_events = true;
-	ctx->timestamps.had_events_since_last_time = true;
 	handle_hidraw(hidraw);
 }
 
@@ -2189,15 +2152,29 @@ dispatch_sources(struct record_context *ctx)
 	struct source *source;
 	struct epoll_event ep[64];
 	int i, count;
+	int timeout = usec_to_millis(ctx->timeout);
 
-	count = epoll_wait(ctx->epoll_fd, ep, ARRAY_LENGTH(ep), ctx->timeout);
+	count = epoll_wait(ctx->epoll_fd,
+			   ep,
+			   ARRAY_LENGTH(ep),
+			   timeout > 0 ? timeout : -1);
 	if (count < 0)
 		return -errno;
+
+	if (count > 0) {
+		usec_t now = usec_from_now();
+		usec_t dt = usec_delta(now, ctx->timestamps.last_wall_time);
+		if (usec_cmp(dt, usec_from_seconds(5)) > 0) {
+			ctx->timestamps.last_wall_time = now;
+			print_wall_time(ctx);
+		}
+	}
 
 	for (i = 0; i < count; ++i) {
 		source = ep[i].data.ptr;
 		if (source->fd == -1)
 			continue;
+
 		source->dispatch(ctx, source->fd, source->user_data);
 	}
 
@@ -2207,13 +2184,12 @@ dispatch_sources(struct record_context *ctx)
 static int
 mainloop(struct record_context *ctx)
 {
-	bool autorestart = (ctx->timeout > 0);
+	bool autorestart = !usec_is_zero(ctx->timeout);
 	struct source *source;
 	struct record_device *d = NULL;
 	sigset_t mask;
-	int sigfd, timerfd;
+	int sigfd;
 
-	assert(ctx->timeout != 0);
 	assert(!list_empty(&ctx->devices));
 
 	ctx->epoll_fd = epoll_create1(0);
@@ -2226,10 +2202,6 @@ mainloop(struct record_context *ctx)
 
 	sigfd = signalfd(-1, &mask, SFD_NONBLOCK);
 	add_source(ctx, sigfd, signalfd_dispatch, NULL);
-
-	timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
-	add_source(ctx, timerfd, timefd_dispatch, NULL);
-	arm_timer(timerfd);
 
 	list_for_each(d, &ctx->devices, link) {
 		struct hidraw *hidraw;
@@ -2279,8 +2251,8 @@ mainloop(struct record_context *ctx)
 		if (autorestart)
 			iprintf(ctx->first_device->fp,
 				I_NONE,
-				"# Autorestart timeout: %d\n",
-				ctx->timeout);
+				"# Autorestart timeout: %u\n",
+				usec_to_seconds(ctx->timeout));
 
 		iprintf(ctx->first_device->fp, I_TOPLEVEL, "devices:\n");
 
@@ -2290,6 +2262,8 @@ mainloop(struct record_context *ctx)
 			print_device_description(d);
 			iprintf(d->fp, I_DEVICE, "events:\n");
 		}
+
+		ctx->timestamps.last_wall_time = usec_from_now();
 		print_wall_time(ctx);
 
 		if (ctx->libinput) {
@@ -2324,8 +2298,8 @@ mainloop(struct record_context *ctx)
 			list_for_each(d, &ctx->devices, link) {
 				iprintf(d->fp,
 					I_NONE,
-					"# Closing after %ds inactivity",
-					ctx->timeout / 1000);
+					"# Closing after %us inactivity",
+					usec_to_seconds(ctx->timeout));
 			}
 		}
 
@@ -2651,8 +2625,9 @@ int
 main(int argc, char **argv)
 {
 	struct record_context ctx = {
-		.timeout = -1,
+		.timeout = usec_from_uint64_t(0),
 		.show_keycodes = false,
+		.timestamps.last_wall_time = usec_from_uint64_t(0),
 	};
 	struct option opts[] = {
 		{ "autorestart", required_argument, 0, OPT_AUTORESTART },
@@ -2690,14 +2665,16 @@ main(int argc, char **argv)
 			usage();
 			rc = EXIT_SUCCESS;
 			goto out;
-		case OPT_AUTORESTART:
-			if (!safe_atoi(optarg, &ctx.timeout) || ctx.timeout <= 0) {
+		case OPT_AUTORESTART: {
+			int timeout;
+			if (!safe_atoi(optarg, &timeout) || timeout <= 0) {
 				usage();
 				rc = EXIT_INVALID_USAGE;
 				goto out;
 			}
-			ctx.timeout = ctx.timeout * 1000;
+			ctx.timeout = usec_from_seconds(timeout);
 			break;
+		}
 		case 'o':
 		case OPT_OUTFILE:
 			output_arg = optarg;
@@ -2752,10 +2729,10 @@ main(int argc, char **argv)
 			optind++;
 	}
 
-	if (ctx.timeout > 0 && output_arg == NULL) {
-		fprintf(stderr, "Option --autorestart requires --output-file\n");
-		rc = EXIT_INVALID_USAGE;
-		goto out;
+	if (!usec_is_zero(ctx.timeout) && output_arg == NULL) {
+		output_arg = "libinput-recording.yml";
+		fprintf(stderr,
+			"Option --autorestart requires --output-file, defaulting to libinput-recording.yml\n");
 	}
 
 	ctx.output_file.name = safe_strdup(output_arg);
