@@ -257,6 +257,7 @@ print_evdev_event(struct record_device *dev, struct input_event *ev)
 
 		usec_t time = input_event_time(ev);
 		usec_t dt = usec_delta(time, last_time);
+		last_time = time;
 
 		snprintf(desc,
 			 sizeof(desc),
@@ -908,7 +909,7 @@ print_tablet_tool_proximity_event(struct record_device *dev, struct libinput_eve
 		tool_type = "brush";
 		break;
 	case LIBINPUT_TABLET_TOOL_TYPE_PENCIL:
-		tool_type = "brush";
+		tool_type = "pencil";
 		break;
 	case LIBINPUT_TABLET_TOOL_TYPE_AIRBRUSH:
 		tool_type = "airbrush";
@@ -1404,7 +1405,7 @@ print_system_header(FILE *fp)
 	_autofree_ char *dmistr = strdup("unknown"); //
 	if (dmi) {
 		char buf[2048] = "unknown";
-		size_t n = fread(buf, sizeof(buf), 1, dmi); // NOLINT: unix.Stream
+		size_t n = fread(buf, 1, sizeof(buf), dmi); // NOLINT: unix.Stream
 		if (n > 0) {
 			free(dmistr);
 			dmistr = strndup(buf, n - 1);
