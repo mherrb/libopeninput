@@ -425,6 +425,7 @@ enum litest_device_type {
 	LITEST_NO_DEVICE = -1,
 	/* Touchpads and associated devices */
 	LITEST_ACER_HAWAII_TOUCHPAD = -1000,
+	LITEST_GENERIC_USBCOMBO_TOUCHPAD,
 	LITEST_AIPTEK,
 	LITEST_ALPS_3FG,
 	LITEST_ALPS_DUALPOINT,
@@ -465,6 +466,7 @@ enum litest_device_type {
 	LITEST_TRACKPOINT,
 	LITEST_ABSINFO_OVERRIDE,
 	LITEST_ACER_HAWAII_KEYBOARD,
+	LITEST_GENERIC_USBCOMBO_KEYBOARD,
 	LITEST_ANKER_MOUSE_KBD,
 	LITEST_APPLE_KEYBOARD,
 	LITEST_CYBORG_RAT,
@@ -499,6 +501,7 @@ enum litest_device_type {
 	/* Switches */
 	LITEST_LID_SWITCH,
 	LITEST_LID_SWITCH_SURFACE3,
+	LITEST_KEYPAD_SLIDE_SWITCH,
 	LITEST_TABLET_MODE_UNRELIABLE,
 
 	/* Special devices */
@@ -1370,6 +1373,7 @@ _litest_timeout(struct libinput *li, const char *func, int lineno, int millis);
 #define litest_timeout_tablet_proxout(li_) litest_timeout(li_, 170)
 #define litest_timeout_touch_arbitration(li_) litest_timeout(li_, 100)
 #define litest_timeout_hysteresis(li_) litest_timeout(li_, 90)
+#define litest_timeout_3fg_drag_or_swipe(li_) litest_timeout(li_, 90)
 #define litest_timeout_3fg_drag(li_) litest_timeout(li_, 800)
 #define litest_timeout_eraser_button(li_) litest_timeout(li_, 50)
 

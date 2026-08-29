@@ -1,5 +1,6 @@
 /*
  * Copyright © 2016 Red Hat, Inc.
+ * Copyright © 2026 David Santamaría Rogado.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -54,8 +55,8 @@ static struct litest_device_interface interface = {
 
 static struct input_id input_id = {
 	.bustype = 0x3,
-	.vendor = 0x4f2,
-	.product = 0x1558,
+	.vendor = 0x1209,
+	.product = 0x1,
 };
 
 /* clang-format off */
@@ -67,7 +68,6 @@ static int events[] = {
 	EV_KEY, BTN_TOOL_DOUBLETAP,
 	EV_KEY, BTN_TOOL_TRIPLETAP,
 	EV_KEY, BTN_TOOL_QUADTAP,
-	EV_KEY, BTN_TOOL_QUINTTAP,
 	INPUT_PROP_MAX, INPUT_PROP_POINTER,
 	INPUT_PROP_MAX, INPUT_PROP_BUTTONPAD,
 	-1, -1,
@@ -86,11 +86,21 @@ static struct input_absinfo absinfo[] = {
 };
 /* clang-format on */
 
-TEST_DEVICE(LITEST_ACER_HAWAII_TOUCHPAD,
+static const char quirk_file[] =
+	"[litest Generic USB KeyTouch Combo Touchpad]\n"
+	"MatchName=litest Generic USB KeyTouch Combo Touchpad\n"
+	"AttrTPKComboLayout=below\n";
+
+TEST_DEVICE(LITEST_GENERIC_USBCOMBO_TOUCHPAD,
 	    .features = LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON,
 	    .interface = &interface,
 
-	    .name = "Chicony ACER Hawaii Keyboard Touchpad",
+	    .name = "Generic USB KeyTouch Combo Touchpad",
 	    .id = &input_id,
 	    .events = events,
-	    .absinfo = absinfo, )
+	    .absinfo = absinfo,
+	    .udev_properties = {
+		    { "ID_INPUT_TOUCHPAD_INTEGRATION", "external" },
+		    { NULL },
+	    },
+	    .quirk_file = quirk_file, )

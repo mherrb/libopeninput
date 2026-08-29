@@ -166,6 +166,8 @@ enum tp_gesture_state {
 	GESTURE_STATE_PINCH,
 	GESTURE_STATE_SWIPE_START,
 	GESTURE_STATE_SWIPE,
+	GESTURE_STATE_3FG_DRAG_OR_SWIPE_START,
+	GESTURE_STATE_3FG_DRAG_OR_SWIPE,
 	GESTURE_STATE_3FG_DRAG_START,
 	GESTURE_STATE_3FG_DRAG,
 	GESTURE_STATE_3FG_DRAG_RELEASED,
@@ -194,7 +196,7 @@ struct tp_touch {
 	bool has_ended; /* TRACKING_ID == -1 */
 	bool dirty;
 	struct device_coords point;
-	uint64_t initial_time;
+	usec_t initial_time;
 	int pressure;
 	bool is_tool_palm; /* MT_TOOL_PALM */
 	int major, minor;
@@ -213,7 +215,7 @@ struct tp_touch {
 
 	struct {
 		struct tp_history_point {
-			uint64_t time;
+			usec_t time;
 			struct device_coords point;
 		} samples[TOUCHPAD_HISTORY_LENGTH];
 		unsigned int index;
@@ -246,7 +248,7 @@ struct tp_touch {
 		struct libinput_timer timer;
 		struct device_coords initial;
 		bool has_moved; /* has moved more than threshold */
-		uint64_t initial_time;
+		usec_t initial_time;
 	} button;
 
 	struct {
@@ -267,7 +269,7 @@ struct tp_touch {
 	struct {
 		enum touch_palm_state state;
 		struct device_coords first; /* first coordinates if is_palm == true */
-		uint64_t time;              /* first timestamp if is_palm == true */
+		usec_t time;                /* first timestamp if is_palm == true */
 	} palm;
 
 	struct {
@@ -344,7 +346,7 @@ struct tp_dispatch {
 		bool enabled;
 		struct device_coords margin;
 		unsigned int other_event_count;
-		uint64_t last_motion_time;
+		usec_t last_motion_time;
 	} hysteresis;
 
 	struct {
@@ -361,7 +363,7 @@ struct tp_dispatch {
 		struct libinput_timer finger_count_switch_timer;
 		enum tp_gesture_state state;
 		struct tp_touch *touches[2];
-		uint64_t initial_time;
+		usec_t initial_time;
 		double initial_distance;
 		double prev_scale;
 		double angle;
@@ -370,7 +372,9 @@ struct tp_dispatch {
 		bool hold_enabled;
 
 		struct libinput_timer drag_3fg_timer;
-		uint64_t drag_3fg_release_time;
+		usec_t drag_3fg_release_time;
+
+		struct libinput_timer drag_3fg_or_swipe_timer;
 	} gesture;
 
 	struct {
@@ -421,9 +425,9 @@ struct tp_dispatch {
 			bool h, v;
 		} active;
 		struct phys_coords vector;
-		uint64_t time_prev;
+		usec_t time_prev;
 		struct {
-			uint64_t h, v;
+			usec_t h, v;
 		} duration;
 	} scroll;
 
@@ -436,7 +440,7 @@ struct tp_dispatch {
 		struct libinput_timer timer;
 		enum tp_tap_state state;
 		uint32_t buttons_pressed;
-		uint64_t saved_press_time, saved_release_time;
+		usec_t saved_press_time, saved_release_time;
 
 		enum libinput_config_tap_button_map map;
 		enum libinput_config_tap_button_map want_map;
@@ -457,6 +461,7 @@ struct tp_dispatch {
 	struct {
 		struct libinput_device_config_dwtp config;
 		bool dwtp_enabled;
+		usec_t timeout;
 
 		int32_t right_edge; /* in device coordinates */
 		int32_t left_edge;  /* in device coordinates */
@@ -465,7 +470,7 @@ struct tp_dispatch {
 		bool trackpoint_active;
 		struct libinput_event_listener trackpoint_listener;
 		struct libinput_timer trackpoint_timer;
-		uint64_t trackpoint_last_event_time;
+		usec_t trackpoint_last_event_time;
 		uint32_t trackpoint_event_count;
 		bool monitor_trackpoint;
 
@@ -481,11 +486,14 @@ struct tp_dispatch {
 	struct {
 		struct libinput_device_config_send_events config;
 		enum libinput_config_send_events_mode current_mode;
+
+		struct list external_mice_list;
 	} sendevents;
 
 	struct {
 		struct libinput_device_config_dwt config;
 		bool dwt_enabled;
+		usec_t timeout;
 
 		/* We have to allow for more than one device node to be the
 		 * internal dwt keyboard (Razer Blade). But they're the same
@@ -498,7 +506,7 @@ struct tp_dispatch {
 		unsigned long mod_mask[NLONGS(KEY_CNT)];
 		bool keyboard_active;
 		struct libinput_timer keyboard_timer;
-		uint64_t keyboard_last_press_time;
+		usec_t keyboard_last_press_time;
 	} dwt;
 
 	struct {
@@ -529,8 +537,8 @@ struct tp_dispatch {
 
 		struct msc_timestamp {
 			enum tp_jump_state state;
-			uint32_t interval;
-			uint32_t now;
+			usec_t interval;
+			usec_t now;
 		} msc_timestamp;
 	} quirks;
 
@@ -614,17 +622,17 @@ tp_get_delta(struct tp_touch *t);
 struct normalized_coords
 tp_filter_motion(struct tp_dispatch *tp,
 		 const struct device_float_coords *unaccelerated,
-		 uint64_t time);
+		 usec_t time);
 
 struct normalized_coords
 tp_filter_motion_unaccelerated(struct tp_dispatch *tp,
 			       const struct device_float_coords *unaccelerated,
-			       uint64_t time);
+			       usec_t time);
 
 struct normalized_coords
 tp_filter_scroll(struct tp_dispatch *tp,
 		 const struct device_float_coords *unaccelerated,
-		 uint64_t time);
+		 usec_t time);
 
 bool
 tp_touch_active(const struct tp_dispatch *tp, const struct tp_touch *t);
@@ -633,7 +641,7 @@ bool
 tp_touch_active_for_gesture(const struct tp_dispatch *tp, const struct tp_touch *t);
 
 int
-tp_tap_handle_state(struct tp_dispatch *tp, uint64_t time);
+tp_tap_handle_state(struct tp_dispatch *tp, usec_t time);
 
 void
 tp_tap_post_process_state(struct tp_dispatch *tp);
@@ -659,16 +667,16 @@ void
 tp_remove_buttons(struct tp_dispatch *tp);
 
 void
-tp_process_button(struct tp_dispatch *tp, const struct evdev_event *e, uint64_t time);
+tp_process_button(struct tp_dispatch *tp, const struct evdev_event *e, usec_t time);
 
 void
-tp_release_all_buttons(struct tp_dispatch *tp, uint64_t time);
+tp_release_all_buttons(struct tp_dispatch *tp, usec_t time);
 
 int
-tp_post_button_events(struct tp_dispatch *tp, uint64_t time);
+tp_post_button_events(struct tp_dispatch *tp, usec_t time);
 
 void
-tp_button_handle_state(struct tp_dispatch *tp, uint64_t time);
+tp_button_handle_state(struct tp_dispatch *tp, usec_t time);
 
 bool
 tp_button_touch_active(const struct tp_dispatch *tp, const struct tp_touch *t);
@@ -678,13 +686,13 @@ tp_button_is_inside_softbutton_area(const struct tp_dispatch *tp,
 				    const struct tp_touch *t);
 
 void
-tp_release_all_taps(struct tp_dispatch *tp, uint64_t now);
+tp_release_all_taps(struct tp_dispatch *tp, usec_t now);
 
 void
-tp_tap_suspend(struct tp_dispatch *tp, uint64_t time);
+tp_tap_suspend(struct tp_dispatch *tp, usec_t time);
 
 void
-tp_tap_resume(struct tp_dispatch *tp, uint64_t time);
+tp_tap_resume(struct tp_dispatch *tp, usec_t time);
 
 bool
 tp_tap_dragging(const struct tp_dispatch *tp);
@@ -699,13 +707,13 @@ void
 tp_remove_edge_scroll(struct tp_dispatch *tp);
 
 void
-tp_edge_scroll_handle_state(struct tp_dispatch *tp, uint64_t time);
+tp_edge_scroll_handle_state(struct tp_dispatch *tp, usec_t time);
 
 int
-tp_edge_scroll_post_events(struct tp_dispatch *tp, uint64_t time);
+tp_edge_scroll_post_events(struct tp_dispatch *tp, usec_t time);
 
 void
-tp_edge_scroll_stop_events(struct tp_dispatch *tp, uint64_t time);
+tp_edge_scroll_stop_events(struct tp_dispatch *tp, usec_t time);
 
 int
 tp_edge_scroll_touch_active(const struct tp_dispatch *tp, const struct tp_touch *t);
@@ -720,25 +728,25 @@ void
 tp_remove_gesture(struct tp_dispatch *tp);
 
 void
-tp_gesture_stop(struct tp_dispatch *tp, uint64_t time);
+tp_gesture_stop(struct tp_dispatch *tp, usec_t time);
 
 void
-tp_gesture_cancel(struct tp_dispatch *tp, uint64_t time);
+tp_gesture_cancel(struct tp_dispatch *tp, usec_t time);
 
 void
-tp_gesture_cancel_motion_gestures(struct tp_dispatch *tp, uint64_t time);
+tp_gesture_cancel_motion_gestures(struct tp_dispatch *tp, usec_t time);
 
 void
-tp_gesture_update_finger_state(struct tp_dispatch *tp, uint64_t time);
+tp_gesture_update_finger_state(struct tp_dispatch *tp, usec_t time);
 
 void
-tp_gesture_post_events(struct tp_dispatch *tp, uint64_t time, bool ignore_motion);
+tp_gesture_post_events(struct tp_dispatch *tp, usec_t time, bool ignore_motion);
 
 void
-tp_gesture_stop_twofinger_scroll(struct tp_dispatch *tp, uint64_t time);
+tp_gesture_stop_twofinger_scroll(struct tp_dispatch *tp, usec_t time);
 
 void
-tp_gesture_tap_timeout(struct tp_dispatch *tp, uint64_t time);
+tp_gesture_tap_timeout(struct tp_dispatch *tp, usec_t time);
 
 void
 tp_clickpad_middlebutton_apply_config(struct evdev_device *device);
@@ -759,7 +767,7 @@ void
 tp_thumb_suppress(struct tp_dispatch *tp, struct tp_touch *t);
 
 void
-tp_thumb_update_touch(struct tp_dispatch *tp, struct tp_touch *t, uint64_t time);
+tp_thumb_update_touch(struct tp_dispatch *tp, struct tp_touch *t, usec_t time);
 
 void
 tp_detect_thumb_while_moving(struct tp_dispatch *tp);

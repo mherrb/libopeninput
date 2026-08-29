@@ -736,6 +736,20 @@ enum libinput_switch {
 	 * in tablet mode.
 	 */
 	LIBINPUT_SWITCH_TABLET_MODE,
+
+	/**
+	 * This switch indicates if the device keypad is exposed or not.
+	 *
+	 * If the switch is in state @ref LIBINPUT_SWITCH_STATE_OFF, the
+	 * keypad is hidden. If the state is @ref LIBINPUT_SWITCH_STATE_ON,
+	 * the keypad is exposed.
+	 *
+	 * All devices will remain accessible regardless of the state of this
+	 * switch.
+	 *
+	 * @since 1.31
+	 */
+	LIBINPUT_SWITCH_KEYPAD_SLIDE,
 };
 
 /**
@@ -2872,6 +2886,7 @@ libinput_event_tablet_tool_get_time_usec(struct libinput_event_tablet_tool *even
  * @return The tool type for this tool object
  *
  * @see libinput_tablet_tool_get_tool_id
+ * @see libinput_tablet_tool_get_name
  *
  * @since 1.2
  */
@@ -2894,11 +2909,38 @@ libinput_tablet_tool_get_type(struct libinput_tablet_tool *tool);
  * @return The tool ID for this tool object or 0 if none is provided
  *
  * @see libinput_tablet_tool_get_type
+ * @see libinput_tablet_tool_get_name
  *
  * @since 1.2
  */
 uint64_t
 libinput_tablet_tool_get_tool_id(struct libinput_tablet_tool *tool);
+
+/**
+ * @ingroup event_tablet
+ *
+ * Return the tool name for a tool object, if any.
+ *
+ * The tool name is a human-readable string that identifies the specific tool,
+ * for example "Pro Pen 2" or "Airbrush" and may be presented to the user.
+ *
+ * The lifetime of the returned string is tied to the lifetime of the
+ * libinput_tablet_tool. The string may be NULL.
+ *
+ * @note This function requires libwacom support. If libwacom is not available
+ * at compile time or the tool is not known to libwacom, this function returns
+ * NULL.
+ *
+ * @param tool The libinput tool
+ * @return The tool name for this tool object or NULL if no name is available
+ *
+ * @see libinput_tablet_tool_get_tool_id
+ * @see libinput_tablet_tool_get_type
+ *
+ * @since 1.31
+ */
+const char *
+libinput_tablet_tool_get_name(struct libinput_tablet_tool *tool);
 
 /**
  * @ingroup event_tablet
@@ -6668,6 +6710,8 @@ enum libinput_config_dwt_state {
  * @see libinput_device_config_dwt_set_enabled
  * @see libinput_device_config_dwt_get_enabled
  * @see libinput_device_config_dwt_get_default_enabled
+ * @see libinput_device_config_dwt_get_timeout
+ * @see libinput_device_config_dwt_set_timeout
  */
 int
 libinput_device_config_dwt_is_available(struct libinput_device *device);
@@ -6692,6 +6736,8 @@ libinput_device_config_dwt_is_available(struct libinput_device *device);
  * @see libinput_device_config_dwt_is_available
  * @see libinput_device_config_dwt_get_enabled
  * @see libinput_device_config_dwt_get_default_enabled
+ * @see libinput_device_config_dwt_get_timeout
+ * @see libinput_device_config_dwt_set_timeout
  */
 enum libinput_config_status
 libinput_device_config_dwt_set_enabled(struct libinput_device *device,
@@ -6711,6 +6757,8 @@ libinput_device_config_dwt_set_enabled(struct libinput_device *device,
  * @see libinput_device_config_dwt_is_available
  * @see libinput_device_config_dwt_set_enabled
  * @see libinput_device_config_dwt_get_default_enabled
+ * @see libinput_device_config_dwt_get_timeout
+ * @see libinput_device_config_dwt_set_timeout
  */
 enum libinput_config_dwt_state
 libinput_device_config_dwt_get_enabled(struct libinput_device *device);
@@ -6729,9 +6777,69 @@ libinput_device_config_dwt_get_enabled(struct libinput_device *device);
  * @see libinput_device_config_dwt_is_available
  * @see libinput_device_config_dwt_set_enabled
  * @see libinput_device_config_dwt_get_enabled
+ * @see libinput_device_config_dwt_get_timeout
+ * @see libinput_device_config_dwt_set_timeout
  */
 enum libinput_config_dwt_state
 libinput_device_config_dwt_get_default_enabled(struct libinput_device *device);
+
+/**
+ * @ingroup config
+ *
+ * Set the disable-while-typing timeout. This timeout denotes the time
+ * in milliseconds between the last key event and the touchpad re-enabling.
+ *
+ * The timeout only takes effect if disable-while-typing is enabled. libinput
+ * implements implementation-defined minimum/maximum timeout values, setting
+ * a timeout outside of those returns @ref LIBINPUT_CONFIG_STATUS_INVALID.
+ * Normal use-cases should never hit these limits.
+ *
+ * @note The timeout is not the only condition for disable-while-typing, expiry of
+ *       the timeout does not guarantee that the touchpad is re-enabled.
+ *
+ * @see libinput_device_config_dwt_is_available
+ * @see libinput_device_config_dwt_set_enabled
+ * @see libinput_device_config_dwt_get_enabled
+ * @see libinput_device_config_dwt_get_timeout
+ *
+ * @since 1.31
+ */
+enum libinput_config_status
+libinput_device_config_dwt_set_timeout(struct libinput_device *device, uint32_t millis);
+
+/**
+ * @ingroup config
+ *
+ * Get the current disable-while-typing timeout.
+ *
+ * @see libinput_device_config_dwt_is_available
+ * @see libinput_device_config_dwt_set_enabled
+ * @see libinput_device_config_dwt_get_enabled
+ * @see libinput_device_config_dwt_set_timeout
+ *
+ * @since 1.31
+ */
+uint32_t
+libinput_device_config_dwt_get_timeout(struct libinput_device *device);
+
+/**
+ * @ingroup config
+ *
+ * Get the default disable-while-typing timeout.
+ *
+ * @param device The device to configure
+ * @return The default timeout in milliseconds for this device.
+ *
+ * @see libinput_device_config_dwt_is_available
+ * @see libinput_device_config_dwt_set_enabled
+ * @see libinput_device_config_dwt_get_enabled
+ * @see libinput_device_config_dwt_set_timeout
+ * @see libinput_device_config_dwt_get_timeout
+ *
+ * @since 1.31
+ */
+uint32_t
+libinput_device_config_dwt_get_default_timeout(struct libinput_device *device);
 
 /**
  * @ingroup config
@@ -6760,6 +6868,8 @@ enum libinput_config_dwtp_state {
  * @see libinput_device_config_dwtp_set_enabled
  * @see libinput_device_config_dwtp_get_enabled
  * @see libinput_device_config_dwtp_get_default_enabled
+ * @see libinput_device_config_dwtp_get_timeout
+ * @see libinput_device_config_dwtp_set_timeout
  *
  * @since 1.21
  */
@@ -6786,6 +6896,8 @@ libinput_device_config_dwtp_is_available(struct libinput_device *device);
  * @see libinput_device_config_dwtp_is_available
  * @see libinput_device_config_dwtp_get_enabled
  * @see libinput_device_config_dwtp_get_default_enabled
+ * @see libinput_device_config_dwtp_get_timeout
+ * @see libinput_device_config_dwtp_set_timeout
  *
  * @since 1.21
  */
@@ -6807,6 +6919,8 @@ libinput_device_config_dwtp_set_enabled(struct libinput_device *device,
  * @see libinput_device_config_dwtp_is_available
  * @see libinput_device_config_dwtp_set_enabled
  * @see libinput_device_config_dwtp_get_default_enabled
+ * @see libinput_device_config_dwtp_get_timeout
+ * @see libinput_device_config_dwtp_set_timeout
  *
  * @since 1.21
  */
@@ -6827,11 +6941,69 @@ libinput_device_config_dwtp_get_enabled(struct libinput_device *device);
  * @see libinput_device_config_dwtp_is_available
  * @see libinput_device_config_dwtp_set_enabled
  * @see libinput_device_config_dwtp_get_enabled
+ * @see libinput_device_config_dwtp_get_timeout
+ * @see libinput_device_config_dwtp_set_timeout
  *
  * @since 1.21
  */
 enum libinput_config_dwtp_state
 libinput_device_config_dwtp_get_default_enabled(struct libinput_device *device);
+
+/**
+ * @ingroup config
+ *
+ * Set the disable-while-trackpointing timeout. This timeout denotes the time
+ * in milliseconds between the last trackpoint event and the touchpad re-enabling.
+ *
+ * The timeout only takes effect if disable-while-trackpointing is enabled.
+ *
+ * @note The timeout is not the only condition for disable-while-trackpointing, expiry
+ * of the timeout does not guarantee that the touchpad is re-enabled.
+ *
+ * @see libinput_device_config_dwtp_is_available
+ * @see libinput_device_config_dwtp_set_enabled
+ * @see libinput_device_config_dwtp_get_enabled
+ * @see libinput_device_config_dwtp_get_timeout
+ *
+ * @since 1.31
+ */
+enum libinput_config_status
+libinput_device_config_dwtp_set_timeout(struct libinput_device *device,
+					uint32_t millis);
+
+/**
+ * @ingroup config
+ *
+ * Get the current disable-while-trackpointing timeout.
+ *
+ * @see libinput_device_config_dwtp_is_available
+ * @see libinput_device_config_dwtp_set_enabled
+ * @see libinput_device_config_dwtp_get_enabled
+ * @see libinput_device_config_dwtp_set_timeout
+ *
+ * @since 1.31
+ */
+uint32_t
+libinput_device_config_dwtp_get_timeout(struct libinput_device *device);
+
+/**
+ * @ingroup config
+ *
+ * Get the default disable-while-trackpointing timeout.
+ *
+ * @param device The device to configure
+ * @return The default timeout in milliseconds for this device.
+ *
+ * @see libinput_device_config_dwtp_is_available
+ * @see libinput_device_config_dwtp_set_enabled
+ * @see libinput_device_config_dwtp_get_enabled
+ * @see libinput_device_config_dwtp_set_timeout
+ * @see libinput_device_config_dwtp_get_timeout
+ *
+ * @since 1.31
+ */
+uint32_t
+libinput_device_config_dwtp_get_default_timeout(struct libinput_device *device);
 
 /**
  * @ingroup config

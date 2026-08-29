@@ -17,7 +17,7 @@ other properties.
 Number of buttons
 ------------------------------------------------------------------------------
 
-.. _touchapds_buttons_phys:
+.. _touchpads_buttons_phys:
 
 ..............................................................................
 Physically separate buttons
@@ -57,7 +57,7 @@ property.
 .. _touchpads_buttons_forcepads:
 
 ..............................................................................
-Forcepads
+Forcepads/Pressurepads
 ..............................................................................
 
 Forcepads are Clickpads without a physical button underneath the hardware.
@@ -65,6 +65,7 @@ They provide pressure and may have a vibration element that is
 software-controlled. This element can simulate the feel of a physical
 click or be co-opted for other tasks.
 
+Forcepads are also called pressurepads or haptic touchpads.
 
 .. _touchpads_touch:
 
@@ -79,7 +80,7 @@ device can **track**, i.e. provide reliable positional information for.
 In the kernel each finger is tracked in a so-called "slot", the number of
 slots thus equals the number of simultaneous touches a device can track.
 
-.. _touchapds_touch_st:
+.. _touchpads_touch_st:
 
 ..............................................................................
 Single-touch touchpads

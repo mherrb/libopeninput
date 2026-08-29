@@ -1,5 +1,5 @@
 project('libinput', 'c',
-	version : '1.30.4',
+	version : '1.31.0',
 	license : 'MIT/Expat',
 	default_options : [ 'c_std=gnu99', 'warning_level=2' ],
 	meson_version : '>= 0.64.0')
@@ -80,10 +80,11 @@ endif
 config_h.set_quoted('HTTP_DOC_LINK', doc_url)
 
 config_h.set('_GNU_SOURCE', '1')
-if get_option('buildtype') == 'debug' or get_option('buildtype') == 'debugoptimized'
+
+is_debug_build = get_option('buildtype') == 'debug' or get_option('buildtype') == 'debugoptimized'
+if is_debug_build
+	config_h.set('IS_DEBUG_BUILD', '1')
 	config_h.set_quoted('MESON_BUILD_ROOT', meson.current_build_dir())
-else
-	config_h.set_quoted('MESON_BUILD_ROOT', '')
 endif
 
 prefix = '''#define _GNU_SOURCE 1
@@ -246,6 +247,10 @@ if have_libwacom
 	if cc.has_function('libwacom_get_button_modeswitch_mode',
 			   dependencies: dep_libwacom)
 		config_h.set('HAVE_LIBWACOM_BUTTON_MODESWITCH_MODE', '1')
+	endif
+	if cc.has_function('libwacom_stylus_is_generic',
+			   dependencies: dep_libwacom)
+		config_h.set('HAVE_LIBWACOM_STYLUS_IS_GENERIC', '1')
 	endif
 else
 	dep_libwacom = declare_dependency()
@@ -816,7 +821,7 @@ executable('ptraccel-debug',
 
 # Don't run the test during a release build because we rely on the magic
 # subtool lookup
-if get_option('buildtype') == 'debug' or get_option('buildtype') == 'debugoptimized'
+if is_debug_build
 	config_tool_option_test = configuration_data()
 	config_tool_option_test.set('DISABLE_WARNING', 'yes')
 	config_tool_option_test.set('MESON_ENABLED_DEBUG_GUI', get_option('debug-gui'))
@@ -854,6 +859,13 @@ test('tools-builddir-lookup-installed',
 endif
 ############ tests ############
 if host_machine.system() != 'openbsd' and host_machine.system() != 'netbsd'
+
+summary({
+	'Tests enabled' : get_option('tests'),
+	'Install tests' : get_option('install-tests'),
+	},
+	section : 'Tests',
+	bool_yn : true)
 
 test('symbols-leak-test',
      find_program('test/symbols-leak-test'),
@@ -943,6 +955,8 @@ if get_option('tests')
 		'test/litest-device-format-string.c',
 		'test/litest-device-generic-pressurepad.c',
 		'test/litest-device-generic-singletouch.c',
+		'test/litest-device-generic-usb-keyboard.c',
+		'test/litest-device-generic-usb-touchpad.c',
 		'test/litest-device-gpio-keys.c',
 		'test/litest-device-huion-pentablet.c',
 		'test/litest-device-huion-q620m-dial.c',
@@ -954,6 +968,7 @@ if get_option('tests')
 		'test/litest-device-keyboard-razer-blackwidow.c',
 		'test/litest-device-keyboard-razer-blade-stealth.c',
 		'test/litest-device-keyboard-razer-blade-stealth-videoswitch.c',
+		'test/litest-device-keypad-slide-switch.c',
 		'test/litest-device-lenovo-scrollpoint.c',
 		'test/litest-device-lid-switch.c',
 		'test/litest-device-lid-switch-surface3.c',

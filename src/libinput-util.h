@@ -47,6 +47,7 @@
 
 #define VENDOR_ID_APPLE 0x5ac
 #define VENDOR_ID_CHICONY 0x4f2
+#define VENDOR_ID_GENERIC 0x1209
 #define VENDOR_ID_LOGITECH 0x46d
 #define VENDOR_ID_WACOM 0x56a
 #define VENDOR_ID_SYNAPTICS_SERIAL 0x002
@@ -59,15 +60,16 @@
 #define DEFAULT_MOUSE_DPI 1000
 #define DEFAULT_TRACKPOINT_SENSITIVITY 128
 
+#if !defined(_trace) && !defined(trace) && !defined(etrace)
 #define _trace(file, ...) \
 	do { \
 	char buf_[1024]; \
 	snprintf(buf_, sizeof(buf_), __VA_ARGS__); \
 	fprintf(file, ANSI_BLUE "%30s():%4d - " ANSI_RED "%s" ANSI_NORMAL "\n", __func__, __LINE__, buf_); \
 	} while (0)
-
 #define trace(...) _trace(stdout, __VA_ARGS__)
 #define etrace(...) _trace(stderr, __VA_ARGS__)
+#endif
 
 #define LIBINPUT_EXPORT __attribute__ ((visibility("default")))
 

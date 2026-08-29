@@ -40,7 +40,7 @@
 
 #define ACC_V120_TRIGGER_THRESHOLD 30  /* 1/4 of a wheel detent */
 #define ACC_V120_THRESHOLD 47 /* Good for both high-ish multipliers (8/120) and the rest of the mice (30/120, 40/120, etc) */
-#define WHEEL_SCROLL_TIMEOUT ms2us(500)
+const usec_t WHEEL_SCROLL_TIMEOUT = { 500 * 1000 };
 
 enum wheel_state {
 	WHEEL_STATE_NONE,
@@ -126,12 +126,13 @@ log_wheel_bug(struct plugin_device *pd, enum wheel_event event)
 }
 
 static inline void
-wheel_set_scroll_timer(struct plugin_device *pd, uint64_t time)
+wheel_set_scroll_timer(struct plugin_device *pd, usec_t time)
 {
 	if (!pd->scroll_timer)
 		return;
 
-	libinput_plugin_timer_set(pd->scroll_timer, time + WHEEL_SCROLL_TIMEOUT);
+	libinput_plugin_timer_set(pd->scroll_timer,
+				  usec_add(time, WHEEL_SCROLL_TIMEOUT));
 }
 
 static inline void
@@ -146,9 +147,6 @@ wheel_cancel_scroll_timer(struct plugin_device *pd)
 static inline void
 wheel_maybe_disable(struct plugin_device *device)
 {
-	if (device->state != WHEEL_STATE_NONE)
-		return;
-
 	if (device->want_feature_disabled) {
 		plugin_log_debug(device->parent->plugin,
 				 "%s: disabled wheel debouncing on request\n",
@@ -156,16 +154,18 @@ wheel_maybe_disable(struct plugin_device *device)
 		libinput_plugin_enable_device_event_frame(device->parent->plugin,
 							  device->device,
 							  false);
-		libinput_plugin_timer_cancel(device->scroll_timer);
-		device->scroll_timer =
-			libinput_plugin_timer_unref(device->scroll_timer);
+		if (device->scroll_timer) {
+			libinput_plugin_timer_cancel(device->scroll_timer);
+			device->scroll_timer =
+				libinput_plugin_timer_unref(device->scroll_timer);
+		}
 	}
 }
 
 static void
 wheel_handle_event_on_state_none(struct plugin_device *pd,
 				 enum wheel_event event,
-				 uint64_t time)
+				 usec_t time)
 {
 	switch (event) {
 	case WHEEL_EVENT_SCROLL:
@@ -191,7 +191,7 @@ wheel_handle_event_on_state_none(struct plugin_device *pd,
 static void
 wheel_handle_event_on_state_accumulating_scroll(struct plugin_device *pd,
 						enum wheel_event event,
-						uint64_t time)
+						usec_t time)
 {
 	switch (event) {
 	case WHEEL_EVENT_SCROLL_ACCUMULATED:
@@ -213,7 +213,7 @@ wheel_handle_event_on_state_accumulating_scroll(struct plugin_device *pd,
 static void
 wheel_handle_event_on_state_scrolling(struct plugin_device *pd,
 				      enum wheel_event event,
-				      uint64_t time)
+				      usec_t time)
 {
 	switch (event) {
 	case WHEEL_EVENT_SCROLL:
@@ -233,7 +233,7 @@ wheel_handle_event_on_state_scrolling(struct plugin_device *pd,
 }
 
 static void
-wheel_handle_event(struct plugin_device *pd, enum wheel_event event, uint64_t time)
+wheel_handle_event(struct plugin_device *pd, enum wheel_event event, usec_t time)
 {
 	enum wheel_state oldstate = pd->state;
 
@@ -319,14 +319,14 @@ wheel_queue_scroll_events(struct plugin_device *pd, struct evdev_frame *frame)
 static void
 wheel_handle_state_none(struct plugin_device *pd,
 			struct evdev_frame *frame,
-			uint64_t time)
+			usec_t time)
 {
 }
 
 static void
 wheel_handle_state_accumulating_scroll(struct plugin_device *pd,
 				       struct evdev_frame *frame,
-				       uint64_t time)
+				       usec_t time)
 {
 	wheel_remove_scroll_events(frame);
 
@@ -340,7 +340,7 @@ wheel_handle_state_accumulating_scroll(struct plugin_device *pd,
 static void
 wheel_handle_state_scrolling(struct plugin_device *pd,
 			     struct evdev_frame *frame,
-			     uint64_t time)
+			     usec_t time)
 {
 	wheel_remove_scroll_events(frame);
 	wheel_queue_scroll_events(pd, frame);
@@ -349,7 +349,7 @@ wheel_handle_state_scrolling(struct plugin_device *pd,
 static void
 wheel_handle_direction_change(struct plugin_device *pd,
 			      struct evdev_event *e,
-			      uint64_t time)
+			      usec_t time)
 {
 	enum wheel_direction new_dir = WHEEL_DIR_UNKNOW;
 
@@ -386,7 +386,7 @@ wheel_update_strategy(struct plugin_device *pd, int32_t value)
 }
 
 static void
-wheel_process_relative(struct plugin_device *pd, struct evdev_event *e, uint64_t time)
+wheel_process_relative(struct plugin_device *pd, struct evdev_event *e, usec_t time)
 {
 	switch (evdev_usage_enum(e->usage)) {
 	case EVDEV_REL_WHEEL:
@@ -417,7 +417,7 @@ wheel_process_relative(struct plugin_device *pd, struct evdev_event *e, uint64_t
 }
 
 static void
-wheel_handle_state(struct plugin_device *pd, struct evdev_frame *frame, uint64_t time)
+wheel_handle_state(struct plugin_device *pd, struct evdev_frame *frame, usec_t time)
 {
 	struct evdev_device *evdev = evdev_device(pd->device);
 
@@ -448,7 +448,7 @@ wheel_handle_state(struct plugin_device *pd, struct evdev_frame *frame, uint64_t
 }
 
 static void
-wheel_on_scroll_timer_timeout(struct libinput_plugin *plugin, uint64_t now, void *data)
+wheel_on_scroll_timer_timeout(struct libinput_plugin *plugin, usec_t now, void *data)
 {
 	struct plugin_device *pd = data;
 
@@ -469,7 +469,7 @@ wheel_plugin_device_create(struct libinput_plugin *libinput_plugin,
 	pd->state = WHEEL_STATE_NONE;
 	pd->dir = WHEEL_DIR_UNKNOW;
 	pd->min_movement = ACC_V120_THRESHOLD;
-	ratelimit_init(&pd->hires_warning_limit, s2us(24 * 60 * 60), 1);
+	ratelimit_init(&pd->hires_warning_limit, usec_from_hours(24), 1);
 
 	if (libinput_device_has_model_quirk(device, QUIRK_MODEL_SCROLL_ON_MIDDLE_CLICK))
 		pd->ignore_small_hi_res_movements = ALWAYS_ACCUMULATE;
@@ -575,7 +575,7 @@ wheel_plugin_device_removed(struct libinput_plugin *libinput_plugin,
 }
 
 static void
-wheel_handle_frame(struct plugin_device *pd, struct evdev_frame *frame, uint64_t time)
+wheel_handle_frame(struct plugin_device *pd, struct evdev_frame *frame, usec_t time)
 {
 	size_t nevents;
 	struct evdev_event *events = evdev_frame_get_events(frame, &nevents);
@@ -602,7 +602,7 @@ wheel_plugin_evdev_frame(struct libinput_plugin *libinput_plugin,
 {
 	struct plugin_data *plugin = libinput_plugin_get_user_data(libinput_plugin);
 	struct plugin_device *pd;
-	uint64_t time = evdev_frame_get_time(frame);
+	usec_t time = evdev_frame_get_time(frame);
 
 	list_for_each(pd, &plugin->devices, link) {
 		if (pd->device == device) {
@@ -625,6 +625,7 @@ wheel_plugin_feature_disabled(struct libinput_plugin *libinput_plugin,
 	list_for_each(pd, &plugin->devices, link) {
 		if (pd->device == device) {
 			pd->want_feature_disabled = true;
+			wheel_maybe_disable(pd);
 			return;
 		}
 	}

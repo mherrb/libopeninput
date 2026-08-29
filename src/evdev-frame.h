@@ -139,6 +139,7 @@ enum evdev_usage {
 
 	EVDEV_SW_LID = _evbit(EV_SW, SW_LID),
 	EVDEV_SW_TABLET_MODE = _evbit(EV_SW, SW_TABLET_MODE),
+	EVDEV_SW_KEYPAD_SLIDE = _evbit(EV_SW, SW_KEYPAD_SLIDE),
 	EVDEV_SW_MAX = _evbit(EV_SW, SW_MAX),
 
 	EVDEV_MSC_SCAN = _evbit(EV_MSC, MSC_SCAN),
@@ -248,6 +249,7 @@ evdev_usage_name(evdev_usage_t usage)
 
 	CASE_RETURN_STRING(EVDEV_SW_LID);
 	CASE_RETURN_STRING(EVDEV_SW_TABLET_MODE);
+	CASE_RETURN_STRING(EVDEV_SW_KEYPAD_SLIDE);
 	CASE_RETURN_STRING(EVDEV_SW_MAX);
 
 	CASE_RETURN_STRING(EVDEV_MSC_SCAN);
@@ -392,9 +394,9 @@ evdev_event_get_code_name(const struct evdev_event *e)
 }
 
 static inline struct input_event
-evdev_event_to_input_event(const struct evdev_event *e, uint64_t time)
+evdev_event_to_input_event(const struct evdev_event *e, usec_t time)
 {
-	struct timeval tv = us2tv(time);
+	struct timeval tv = usec_to_timeval(time);
 	return (struct input_event){
 		.type = evdev_event_type(e),
 		.code = evdev_event_code(e),
@@ -405,7 +407,7 @@ evdev_event_to_input_event(const struct evdev_event *e, uint64_t time)
 }
 
 static inline struct evdev_event
-evdev_event_from_input_event(const struct input_event *e, uint64_t *time)
+evdev_event_from_input_event(const struct input_event *e, usec_t *time)
 {
 	if (time)
 		*time = input_event_time(e);
@@ -432,7 +434,7 @@ struct evdev_frame {
 	int refcount;
 	size_t max_size;
 	size_t count;
-	uint64_t time;
+	usec_t time;
 	struct evdev_event events[];
 };
 
@@ -485,12 +487,12 @@ evdev_frame_get_events(struct evdev_frame *frame, size_t *nevents)
  * Set the timestamp for all events in this event frame.
  */
 static inline void
-evdev_frame_set_time(struct evdev_frame *frame, uint64_t time)
+evdev_frame_set_time(struct evdev_frame *frame, usec_t time)
 {
 	frame->time = time;
 }
 
-static inline uint64_t
+static inline usec_t
 evdev_frame_get_time(const struct evdev_frame *frame)
 {
 	return frame->time;
@@ -590,7 +592,7 @@ evdev_frame_append_input_event(struct evdev_frame *frame,
 {
 	struct evdev_event e = evdev_event_from_input_event(event, NULL);
 	if (evdev_usage_as_uint32_t(e.usage) == EVDEV_SYN_REPORT) {
-		uint64_t time = input_event_time(event);
+		usec_t time = input_event_time(event);
 		evdev_frame_set_time(frame, time);
 	}
 	return evdev_frame_append(frame, &e, 1);

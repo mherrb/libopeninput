@@ -1348,7 +1348,7 @@ litest_log_handler(struct libinput *libinput,
 	else if (strstr(format, "edge-scroll:"))
 		color = ANSI_BRIGHT_GREEN;
 	else if (strstr(format, "gesture:"))
-		color = ANSI_BRIGHT_YELLOW;
+		color = ANSI_YELLOW;
 	else if (strstr(msg, "Plugin:"))
 		color = ANSI_BRIGHT_CYAN;
 
@@ -2003,7 +2003,10 @@ litest_setup_quirks(struct list *created_files_list, enum quirks_setup_mode mode
 
 	switch (mode) {
 	case QUIRKS_SETUP_USE_SRCDIR:
-		dirname = LIBINPUT_QUIRKS_SRCDIR;
+		if (builddir_lookup(NULL))
+			dirname = LIBINPUT_QUIRKS_SRCDIR;
+		else
+			dirname = LIBINPUT_QUIRKS_DIR;
 		break;
 	case QUIRKS_SETUP_ONLY_DEVICE:
 		dirname = LIBINPUT_QUIRKS_DIR;
@@ -2486,6 +2489,7 @@ axis_replacement_value(struct litest_device *d,
 	while (axis->evcode != -1) {
 		if (axis->evcode == evcode) {
 			switch (evcode) {
+			case ABS_MISC:
 			case ABS_MT_SLOT:
 			case ABS_MT_TRACKING_ID:
 			case ABS_MT_TOOL_TYPE:
@@ -2881,7 +2885,7 @@ auto_assign_tablet_value(struct litest_device *d,
 	static int tracking_id;
 	int value = ev->value;
 
-	if (value != LITEST_AUTO_ASSIGN || ev->type != EV_ABS)
+	if (ev->type != EV_ABS)
 		return value;
 
 	switch (ev->code) {
@@ -2898,7 +2902,7 @@ auto_assign_tablet_value(struct litest_device *d,
 		break;
 	default:
 		if (!axis_replacement_value(d, axes, ev->code, &value) &&
-		    d->interface->get_axis_default) {
+		    value == LITEST_AUTO_ASSIGN && d->interface->get_axis_default) {
 			int error = d->interface->get_axis_default(d, ev->code, &value);
 			if (error) {
 				litest_abort_msg(
@@ -2996,8 +3000,14 @@ litest_tablet_proximity_out(struct litest_device *d)
 		case evbit(EV_KEY, LITEST_BTN_TOOL_AUTO):
 			litest_tool_event(d, ev->value);
 			break;
+		case evbit(EV_ABS, ABS_MT_TRACKING_ID):
+			if (ev->value == -1) {
+				litest_event(d, ev->type, ev->code, ev->value);
+				break;
+			}
+			_fallthrough_;
 		default:
-			value = auto_assign_tablet_value(d, ev, -1, -1, NULL);
+			value = auto_assign_tablet_value(d, ev, 0, 0, NULL);
 			if (!tablet_ignore_event(ev, value))
 				litest_event(d, ev->type, ev->code, value);
 			break;
@@ -3323,6 +3333,9 @@ litest_switch_action(struct litest_device *dev,
 	case LIBINPUT_SWITCH_TABLET_MODE:
 		code = SW_TABLET_MODE;
 		break;
+	case LIBINPUT_SWITCH_KEYPAD_SLIDE:
+		code = SW_KEYPAD_SLIDE;
+		break;
 	default:
 		litest_abort_msg("Invalid switch %d", sw);
 		break;
@@ -3510,9 +3523,9 @@ _litest_wait_for_event_of_type(struct libinput *li, const char *func, int lineno
 	fds.revents = 0;
 
 	const int timeout = 2000;
-	uint64_t expiry = 0;
+	usec_t expiry = usec_from_uint64_t(0);
 	int rc = now_in_us(&expiry);
-	expiry += ms2us(timeout);
+	expiry = usec_add_millis(expiry, timeout);
 	litest_assert_errno_success(rc);
 
 	while (1) {
@@ -3527,9 +3540,9 @@ _litest_wait_for_event_of_type(struct libinput *li, const char *func, int lineno
 		}
 
 		if (type == LIBINPUT_EVENT_NONE) {
-			uint64_t now;
+			usec_t now;
 			now_in_us(&now);
-			if (now > expiry) {
+			if (usec_cmp(now, expiry) > 0) {
 				_litest_abort_msg(
 					NULL,
 					lineno,
@@ -5179,8 +5192,8 @@ litest_parse_argv(int argc, char **argv, int *njobs_out)
 			       "          Glob to filter on test groups\n"
 			       "    --filter-rangeval=N \n"
 			       "          Only run tests with the given range value\n"
-			       "    --filter-deviceless=.... \n"
-			       "          Glob to filter on tests that do not create test devices\n"
+			       "    --filter-deviceless \n"
+			       "          Only run tests that do not create test devices\n"
 			       "    --filter-parameter=param1:glob,param2:glob,... \n"
 			       "          Glob(s) to filter on the given parameters in their string "
 			       "representation.\n"

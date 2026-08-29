@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018 Red Hat, Inc.
+ * Copyright © 2025 Sicelo A. Mhlongo <absicsz@gmail.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -23,36 +23,34 @@
 
 #include "config.h"
 
-#include "builddir.h"
-#include "libinput-util.h"
+#include "litest-int.h"
+#include "litest.h"
 
-int
-main(int argc, char **argv)
-{
-	char *builddir = NULL;
-	char *mode;
+static struct input_id input_id = {
+	.bustype = 0x19,
+	.vendor = 0x0,
+	.product = 0x5,
+};
 
-	assert(argc == 2);
-	mode = argv[1];
+/* clang-format off */
+static int events[] = {
+	EV_SW, SW_KEYPAD_SLIDE,
+	EV_SW, SW_CAMERA_LENS_COVER,
+	EV_KEY, KEY_CAMERA_FOCUS,
+	-1, -1,
+};
+/* clang-format on */
 
-	bool is_builddir = builddir_lookup(&builddir);
-	if (streq(mode, "--builddir-is-null")) {
-		assert(!is_builddir);
-		assert(builddir == NULL);
-	} else if (streq(mode, "--builddir-is-set")) {
-#ifdef IS_DEBUG_BUILD
-		assert(is_builddir);
-		assert(builddir);
-		assert(streq(MESON_BUILD_ROOT, builddir));
-#else
-		assert(!is_builddir);
-		assert(builddir == NULL);
-#endif
-	} else {
-		abort();
-	}
+TEST_DEVICE(LITEST_KEYPAD_SLIDE_SWITCH,
+	    .features = LITEST_SWITCH,
+	    .interface = NULL,
 
-	free(builddir);
+	    .name = "Keypad Slide Switch",
+	    .id = &input_id,
+	    .events = events,
+	    .absinfo = NULL,
 
-	return 0;
-}
+	    .udev_properties = {
+		    { "ID_INPUT_SWITCH", "1" },
+		    { NULL },
+	    }, )

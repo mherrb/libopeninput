@@ -33,7 +33,7 @@
 static void
 fallback_keyboard_notify_key(struct fallback_dispatch *dispatch,
 			     struct evdev_device *device,
-			     uint64_t time,
+			     usec_t time,
 			     evdev_usage_t usage,
 			     enum libinput_key_state state)
 {
@@ -53,7 +53,7 @@ fallback_keyboard_notify_key(struct fallback_dispatch *dispatch,
 static void
 fallback_lid_notify_toggle(struct fallback_dispatch *dispatch,
 			   struct evdev_device *device,
-			   uint64_t time)
+			   usec_t time)
 {
 	if (dispatch->lid.is_closed ^ dispatch->lid.is_closed_client_state) {
 		switch_notify_toggle(&device->base,
@@ -67,7 +67,7 @@ fallback_lid_notify_toggle(struct fallback_dispatch *dispatch,
 void
 fallback_notify_physical_button(struct fallback_dispatch *dispatch,
 				struct evdev_device *device,
-				uint64_t time,
+				usec_t time,
 				evdev_usage_t button,
 				enum libinput_button_state state)
 {
@@ -82,20 +82,23 @@ fallback_interface_get_switch_state(struct evdev_dispatch *evdev_dispatch,
 
 	switch (sw) {
 	case LIBINPUT_SWITCH_TABLET_MODE:
+		return dispatch->tablet_mode.sw.state ? LIBINPUT_SWITCH_STATE_ON
+						      : LIBINPUT_SWITCH_STATE_OFF;
+		break;
+	case LIBINPUT_SWITCH_KEYPAD_SLIDE:
+		return dispatch->keypad_slide.sw.state ? LIBINPUT_SWITCH_STATE_ON
+						       : LIBINPUT_SWITCH_STATE_OFF;
 		break;
 	default:
 		/* Internal function only, so we can abort here */
 		abort();
 	}
-
-	return dispatch->tablet_mode.sw.state ? LIBINPUT_SWITCH_STATE_ON
-					      : LIBINPUT_SWITCH_STATE_OFF;
 }
 
 static inline bool
 post_button_scroll(struct evdev_device *device,
 		   struct device_float_coords raw,
-		   uint64_t time)
+		   usec_t time)
 {
 	if (device->scroll.method != LIBINPUT_CONFIG_SCROLL_ON_BUTTON_DOWN)
 		return false;
@@ -171,7 +174,7 @@ fallback_rotate_relative(struct fallback_dispatch *dispatch,
 static void
 fallback_flush_relative_motion(struct fallback_dispatch *dispatch,
 			       struct evdev_device *device,
-			       uint64_t time)
+			       usec_t time)
 {
 	struct libinput_device *base = &device->base;
 	struct normalized_coords accel;
@@ -205,7 +208,7 @@ fallback_flush_relative_motion(struct fallback_dispatch *dispatch,
 static void
 fallback_flush_wheels(struct fallback_dispatch *dispatch,
 		      struct evdev_device *device,
-		      uint64_t time)
+		      usec_t time)
 {
 	if (!libinput_device_has_capability(&device->base, LIBINPUT_DEVICE_CAP_POINTER))
 		return;
@@ -322,7 +325,7 @@ fallback_flush_wheels(struct fallback_dispatch *dispatch,
 static void
 fallback_flush_absolute_motion(struct fallback_dispatch *dispatch,
 			       struct evdev_device *device,
-			       uint64_t time)
+			       usec_t time)
 {
 	struct libinput_device *base = &device->base;
 	struct device_coords point;
@@ -340,7 +343,7 @@ static bool
 fallback_flush_mt_down(struct fallback_dispatch *dispatch,
 		       struct evdev_device *device,
 		       int slot_idx,
-		       uint64_t time)
+		       usec_t time)
 {
 	struct libinput_device *base = &device->base;
 	struct libinput_seat *seat = base->seat;
@@ -379,7 +382,7 @@ static bool
 fallback_flush_mt_motion(struct fallback_dispatch *dispatch,
 			 struct evdev_device *device,
 			 int slot_idx,
-			 uint64_t time)
+			 usec_t time)
 {
 	struct libinput_device *base = &device->base;
 	struct device_coords point;
@@ -409,7 +412,7 @@ static bool
 fallback_flush_mt_up(struct fallback_dispatch *dispatch,
 		     struct evdev_device *device,
 		     int slot_idx,
-		     uint64_t time)
+		     usec_t time)
 {
 	struct libinput_device *base = &device->base;
 	struct libinput_seat *seat = base->seat;
@@ -437,7 +440,7 @@ static bool
 fallback_flush_mt_cancel(struct fallback_dispatch *dispatch,
 			 struct evdev_device *device,
 			 int slot_idx,
-			 uint64_t time)
+			 usec_t time)
 {
 	struct libinput_device *base = &device->base;
 	struct libinput_seat *seat = base->seat;
@@ -464,7 +467,7 @@ fallback_flush_mt_cancel(struct fallback_dispatch *dispatch,
 static bool
 fallback_flush_st_down(struct fallback_dispatch *dispatch,
 		       struct evdev_device *device,
-		       uint64_t time)
+		       usec_t time)
 {
 	struct libinput_device *base = &device->base;
 	struct libinput_seat *seat = base->seat;
@@ -500,7 +503,7 @@ fallback_flush_st_down(struct fallback_dispatch *dispatch,
 static bool
 fallback_flush_st_motion(struct fallback_dispatch *dispatch,
 			 struct evdev_device *device,
-			 uint64_t time)
+			 usec_t time)
 {
 	struct libinput_device *base = &device->base;
 	struct device_coords point;
@@ -522,7 +525,7 @@ fallback_flush_st_motion(struct fallback_dispatch *dispatch,
 static bool
 fallback_flush_st_up(struct fallback_dispatch *dispatch,
 		     struct evdev_device *device,
-		     uint64_t time)
+		     usec_t time)
 {
 	struct libinput_device *base = &device->base;
 	struct libinput_seat *seat = base->seat;
@@ -547,7 +550,7 @@ fallback_flush_st_up(struct fallback_dispatch *dispatch,
 static bool
 fallback_flush_st_cancel(struct fallback_dispatch *dispatch,
 			 struct evdev_device *device,
-			 uint64_t time)
+			 usec_t time)
 {
 	struct libinput_device *base = &device->base;
 	struct libinput_seat *seat = base->seat;
@@ -572,7 +575,7 @@ fallback_flush_st_cancel(struct fallback_dispatch *dispatch,
 static void
 fallback_process_touch_button(struct fallback_dispatch *dispatch,
 			      struct evdev_device *device,
-			      uint64_t time,
+			      usec_t time,
 			      int value)
 {
 	dispatch->pending_event |=
@@ -583,7 +586,7 @@ static inline void
 fallback_process_key(struct fallback_dispatch *dispatch,
 		     struct evdev_device *device,
 		     struct evdev_event *e,
-		     uint64_t time)
+		     usec_t time)
 {
 	/* ignore kernel key repeat */
 	if (e->value == 2)
@@ -625,7 +628,7 @@ static void
 fallback_process_touch(struct fallback_dispatch *dispatch,
 		       struct evdev_device *device,
 		       struct evdev_event *e,
-		       uint64_t time)
+		       usec_t time)
 {
 	struct mt_slot *slot = &dispatch->mt.slots[dispatch->mt.slot];
 
@@ -726,7 +729,7 @@ fallback_process_absolute_motion(struct fallback_dispatch *dispatch,
 }
 
 static void
-fallback_lid_keyboard_event(uint64_t time, struct libinput_event *event, void *data)
+fallback_lid_keyboard_event(usec_t time, struct libinput_event *event, void *data)
 {
 	struct fallback_dispatch *dispatch = fallback_dispatch(data);
 
@@ -741,8 +744,8 @@ fallback_lid_keyboard_event(uint64_t time, struct libinput_event *event, void *d
 		int rc;
 		struct input_event ev[2];
 
-		ev[0] = input_event_init(0, EV_SW, SW_LID, 0);
-		ev[1] = input_event_init(0, EV_SYN, SYN_REPORT, 0);
+		ev[0] = input_event_init(usec_from_uint64_t(0), EV_SW, SW_LID, 0);
+		ev[1] = input_event_init(usec_from_uint64_t(0), EV_SYN, SYN_REPORT, 0);
 
 		rc = write(fd, ev, sizeof(ev));
 
@@ -765,7 +768,7 @@ fallback_lid_keyboard_event(uint64_t time, struct libinput_event *event, void *d
 
 static void
 fallback_lid_toggle_keyboard_listener(struct fallback_dispatch *dispatch,
-				      struct evdev_paired_keyboard *kbd,
+				      struct evdev_paired_device *kbd,
 				      bool is_closed)
 {
 	assert(kbd->device);
@@ -786,7 +789,7 @@ static void
 fallback_lid_toggle_keyboard_listeners(struct fallback_dispatch *dispatch,
 				       bool is_closed)
 {
-	struct evdev_paired_keyboard *kbd;
+	struct evdev_paired_device *kbd;
 
 	list_for_each(kbd, &dispatch->lid.paired_keyboard_list, link) {
 		if (!kbd->device)
@@ -800,7 +803,7 @@ static inline void
 fallback_process_switch(struct fallback_dispatch *dispatch,
 			struct evdev_device *device,
 			struct evdev_event *e,
-			uint64_t time)
+			usec_t time)
 {
 	enum libinput_switch_state state;
 	bool is_closed;
@@ -833,6 +836,20 @@ fallback_process_switch(struct fallback_dispatch *dispatch,
 				     LIBINPUT_SWITCH_TABLET_MODE,
 				     state);
 		break;
+	case EVDEV_SW_KEYPAD_SLIDE:
+		if (dispatch->keypad_slide.sw.state == e->value)
+			return;
+
+		dispatch->keypad_slide.sw.state = e->value;
+		if (e->value)
+			state = LIBINPUT_SWITCH_STATE_ON;
+		else
+			state = LIBINPUT_SWITCH_STATE_OFF;
+		switch_notify_toggle(&device->base,
+				     time,
+				     LIBINPUT_SWITCH_KEYPAD_SLIDE,
+				     state);
+		break;
 	default:
 		break;
 	}
@@ -841,7 +858,7 @@ fallback_process_switch(struct fallback_dispatch *dispatch,
 static inline bool
 fallback_reject_relative(struct evdev_device *device,
 			 const struct evdev_event *e,
-			 uint64_t time)
+			 usec_t time)
 {
 	switch (evdev_usage_enum(e->usage)) {
 	case EVDEV_REL_X:
@@ -876,7 +893,7 @@ static inline void
 fallback_process_relative(struct fallback_dispatch *dispatch,
 			  struct evdev_device *device,
 			  struct evdev_event *e,
-			  uint64_t time)
+			  usec_t time)
 {
 	if (fallback_reject_relative(device, e, time))
 		return;
@@ -915,7 +932,7 @@ static inline void
 fallback_process_absolute(struct fallback_dispatch *dispatch,
 			  struct evdev_device *device,
 			  struct evdev_event *e,
-			  uint64_t time)
+			  usec_t time)
 {
 	if (device->is_mt) {
 		fallback_process_touch(dispatch, device, e, time);
@@ -959,7 +976,7 @@ fallback_arbitrate_touch(struct fallback_dispatch *dispatch, struct mt_slot *slo
 static inline bool
 fallback_flush_mt_events(struct fallback_dispatch *dispatch,
 			 struct evdev_device *device,
-			 uint64_t time)
+			 usec_t time)
 {
 	bool sent = false;
 
@@ -1030,7 +1047,7 @@ fallback_flush_mt_events(struct fallback_dispatch *dispatch,
 static void
 fallback_handle_state(struct fallback_dispatch *dispatch,
 		      struct evdev_device *device,
-		      uint64_t time)
+		      usec_t time)
 {
 	bool need_touch_frame = false;
 
@@ -1098,7 +1115,7 @@ static void
 fallback_interface_process_event(struct evdev_dispatch *evdev_dispatch,
 				 struct evdev_device *device,
 				 struct evdev_event *event,
-				 uint64_t time)
+				 usec_t time)
 {
 	struct fallback_dispatch *dispatch = fallback_dispatch(evdev_dispatch);
 	static bool warned = false;
@@ -1138,7 +1155,7 @@ static void
 fallback_interface_process(struct evdev_dispatch *dispatch,
 			   struct evdev_device *device,
 			   struct evdev_frame *frame,
-			   uint64_t time)
+			   usec_t time)
 {
 	size_t nevents;
 	struct evdev_event *events = evdev_frame_get_events(frame, &nevents);
@@ -1152,7 +1169,7 @@ static void
 cancel_touches(struct fallback_dispatch *dispatch,
 	       struct evdev_device *device,
 	       const struct device_coord_rect *rect,
-	       uint64_t time)
+	       usec_t time)
 {
 	unsigned int idx;
 	bool need_frame = false;
@@ -1183,7 +1200,7 @@ cancel_touches(struct fallback_dispatch *dispatch,
 static void
 release_pressed_keys(struct fallback_dispatch *dispatch,
 		     struct evdev_device *device,
-		     uint64_t time)
+		     usec_t time)
 {
 	for (evdev_usage_t usage = evdev_usage_from(EVDEV_KEY_RESERVED);
 	     evdev_usage_le(usage, EVDEV_KEY_MAX);
@@ -1233,9 +1250,9 @@ fallback_return_to_neutral_state(struct fallback_dispatch *dispatch,
 				 struct evdev_device *device)
 {
 	struct libinput *libinput = evdev_libinput_context(device);
-	uint64_t time;
+	usec_t time = libinput_now(libinput);
 
-	if ((time = libinput_now(libinput)) == 0)
+	if (usec_is_zero(time))
 		return;
 
 	cancel_touches(dispatch, device, NULL, time);
@@ -1257,7 +1274,7 @@ static void
 fallback_interface_remove(struct evdev_dispatch *evdev_dispatch)
 {
 	struct fallback_dispatch *dispatch = fallback_dispatch(evdev_dispatch);
-	struct evdev_paired_keyboard *kbd;
+	struct evdev_paired_device *kbd;
 
 	libinput_timer_cancel(&dispatch->debounce.timer);
 	libinput_timer_cancel(&dispatch->debounce.timer_short);
@@ -1266,7 +1283,7 @@ fallback_interface_remove(struct evdev_dispatch *evdev_dispatch)
 	libinput_device_remove_event_listener(&dispatch->tablet_mode.other.listener);
 
 	list_for_each_safe(kbd, &dispatch->lid.paired_keyboard_list, link) {
-		evdev_paired_keyboard_destroy(kbd);
+		evdev_paired_device_destroy(kbd);
 	}
 }
 
@@ -1275,7 +1292,7 @@ fallback_interface_sync_initial_state(struct evdev_device *device,
 				      struct evdev_dispatch *evdev_dispatch)
 {
 	struct fallback_dispatch *dispatch = fallback_dispatch(evdev_dispatch);
-	uint64_t time = libinput_now(evdev_libinput_context(device));
+	usec_t time = libinput_now(evdev_libinput_context(device));
 
 	if (device->tags & EVDEV_TAG_LID_SWITCH) {
 		struct libevdev *evdev = device->evdev;
@@ -1303,13 +1320,20 @@ fallback_interface_sync_initial_state(struct evdev_device *device,
 				     LIBINPUT_SWITCH_TABLET_MODE,
 				     LIBINPUT_SWITCH_STATE_ON);
 	}
+
+	if (dispatch->keypad_slide.sw.state) {
+		switch_notify_toggle(&device->base,
+				     time,
+				     LIBINPUT_SWITCH_KEYPAD_SLIDE,
+				     LIBINPUT_SWITCH_STATE_ON);
+	}
 }
 
 static void
 fallback_interface_update_rect(struct evdev_dispatch *evdev_dispatch,
 			       struct evdev_device *device,
 			       const struct phys_rect *phys_rect,
-			       uint64_t time)
+			       usec_t time)
 {
 	struct fallback_dispatch *dispatch = fallback_dispatch(evdev_dispatch);
 	struct device_coord_rect rect;
@@ -1328,7 +1352,7 @@ fallback_interface_toggle_touch(struct evdev_dispatch *evdev_dispatch,
 				struct evdev_device *device,
 				enum evdev_arbitration_state which,
 				const struct phys_rect *phys_rect,
-				uint64_t time)
+				usec_t time)
 {
 	struct fallback_dispatch *dispatch = fallback_dispatch(evdev_dispatch);
 	struct device_coord_rect rect = { 0 };
@@ -1347,7 +1371,7 @@ fallback_interface_toggle_touch(struct evdev_dispatch *evdev_dispatch,
 		 * arbitration by just a little bit so that any touch in
 		 * event is caught as palm touch. */
 		libinput_timer_set(&dispatch->arbitration.arbitration_timer,
-				   time + ms2us(90));
+				   usec_add_millis(time, 90));
 		state = "not-active";
 		break;
 	case ARBITRATION_IGNORE_RECT:
@@ -1388,7 +1412,7 @@ fallback_lid_pair_keyboard(struct evdev_device *lid_switch,
 			   struct evdev_device *keyboard)
 {
 	struct fallback_dispatch *dispatch = fallback_dispatch(lid_switch->dispatch);
-	struct evdev_paired_keyboard *kbd;
+	struct evdev_paired_device *kbd;
 	size_t count = 0;
 
 	if ((keyboard->tags & EVDEV_TAG_KEYBOARD) == 0 ||
@@ -1441,9 +1465,7 @@ fallback_suspend(struct fallback_dispatch *dispatch, struct evdev_device *device
 }
 
 static void
-fallback_tablet_mode_switch_event(uint64_t time,
-				  struct libinput_event *event,
-				  void *data)
+fallback_tablet_mode_switch_event(usec_t time, struct libinput_event *event, void *data)
 {
 	struct fallback_dispatch *dispatch = data;
 	struct evdev_device *device = dispatch->device;
@@ -1527,7 +1549,7 @@ fallback_interface_device_removed(struct evdev_device *device,
 				  struct evdev_device *removed_device)
 {
 	struct fallback_dispatch *dispatch = fallback_dispatch(device->dispatch);
-	struct evdev_paired_keyboard *kbd;
+	struct evdev_paired_device *kbd;
 
 	list_for_each_safe(kbd, &dispatch->lid.paired_keyboard_list, link) {
 		if (!kbd->device)
@@ -1536,7 +1558,7 @@ fallback_interface_device_removed(struct evdev_device *device,
 		if (kbd->device != removed_device)
 			continue;
 
-		evdev_paired_keyboard_destroy(kbd);
+		evdev_paired_device_destroy(kbd);
 	}
 
 	if (removed_device == dispatch->tablet_mode.other.sw_device) {
@@ -1733,11 +1755,16 @@ fallback_dispatch_init_switch(struct fallback_dispatch *dispatch,
 		dispatch->tablet_mode.sw.state = val;
 	}
 
+	if (device->tags & EVDEV_TAG_KEYPAD_SLIDE_SWITCH) {
+		val = libevdev_get_event_value(device->evdev, EV_SW, SW_KEYPAD_SLIDE);
+		dispatch->keypad_slide.sw.state = val;
+	}
+
 	libinput_device_init_event_listener(&dispatch->tablet_mode.other.listener);
 }
 
 static void
-fallback_arbitration_timeout(uint64_t now, void *data)
+fallback_arbitration_timeout(usec_t now, void *data)
 {
 	struct fallback_dispatch *dispatch = data;
 

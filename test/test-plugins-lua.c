@@ -25,6 +25,7 @@
 
 #include <fcntl.h>
 #include <inttypes.h>
+#include <valgrind/valgrind.h>
 
 #include "util-files.h"
 #include "util-strings.h"
@@ -277,7 +278,7 @@ START_TEST(lua_test_libinput_now)
 						    LIBINPUT_PLUGIN_SYSTEM_FLAG_NONE);
 		litest_drain_events(li);
 
-		uint64_t test_now;
+		usec_t test_now;
 		int rc = now_in_us(&test_now);
 		litest_assert_neg_errno_success(rc);
 
@@ -290,10 +291,12 @@ START_TEST(lua_test_libinput_now)
 
 		uint64_t plugin_now = strtoull(tokens[1], NULL, 10);
 
-		litest_assert_int_le(plugin_now, test_now);
+		litest_assert_int_le(plugin_now, usec_as_uint64_t(test_now));
 		/* Even a slow test runner hopefully doesn't take >300ms to get to the
 		 * log print */
-		litest_assert_int_gt(plugin_now, test_now - ms2us(300));
+		litest_assert_int_gt(
+			plugin_now,
+			usec_as_uint64_t(usec_sub(test_now, usec_from_millis(300))));
 	}
 }
 END_TEST
@@ -308,12 +311,12 @@ START_TEST(lua_test_libinput_timer)
 	_autofree_ char *timeout =
 		strdup_printf("%s%" PRIu64,
 			      streq(mode, "absolute") ? "libinput:now() + " : "",
-			      ms2us(100));
+			      usec_as_uint64_t(usec_from_millis(100)));
 	_autofree_ char *reschedule_timeout =
 		strdup_printf("libinput:timer_set_%s(%s%" PRIu64 ")\n",
 			      mode,
 			      streq(mode, "absolute") ? "t + " : "",
-			      ms2us(100));
+			      usec_as_uint64_t(usec_from_millis(100)));
 	_autofree_ char *lua = strdup_printf(
 		"libinput:register({1})\n"
 		"libinput:connect(\"timer-expired\",\n"
@@ -343,7 +346,7 @@ START_TEST(lua_test_libinput_timer)
 			msleep(100);
 			libinput_dispatch(li);
 
-			uint64_t test_now;
+			usec_t test_now;
 			int rc = now_in_us(&test_now);
 			litest_assert_neg_errno_success(rc);
 
@@ -358,10 +361,13 @@ START_TEST(lua_test_libinput_timer)
 			litest_assert_int_eq(nelem, 2U);
 
 			uint64_t plugin_now = strtoull(tokens[1], NULL, 10);
-			litest_assert_int_le(plugin_now, test_now);
+			litest_assert_int_le(plugin_now, usec_as_uint64_t(test_now));
 			/* Even a slow test runner hopefully doesn't take >300ms between
 			 * dispatch and now_in_us */
-			litest_assert_int_gt(plugin_now, test_now - ms2us(300));
+			litest_assert_int_gt(
+				plugin_now,
+				usec_as_uint64_t(
+					usec_sub(test_now, usec_from_millis(300))));
 		}
 
 		if (!reschedule) {
@@ -579,7 +585,7 @@ START_TEST(lua_frame_handler)
 		_destroy_(litest_device) *device = litest_add_device(li, LITEST_MOUSE);
 		litest_drain_events(li);
 
-		uint64_t before, after;
+		usec_t before, after;
 		now_in_us(&before);
 		msleep(1);
 		litest_button_click_debounced(device, li, BTN_LEFT, 1);
@@ -612,8 +618,8 @@ START_TEST(lua_frame_handler)
 		char *strtime = split[nelems - 1];
 		uint64_t timestamp = 0;
 		litest_assert(safe_atou64(strtime, &timestamp));
-		litest_assert_int_gt(timestamp, before);
-		litest_assert_int_lt(timestamp, after);
+		litest_assert_int_gt(timestamp, usec_as_uint64_t(before));
+		litest_assert_int_lt(timestamp, usec_as_uint64_t(after));
 	}
 }
 END_TEST
@@ -983,7 +989,6 @@ START_TEST(lua_disable_button_debounce)
 		when == DEVICE_NEW ? "" : "--",
 		when == FIRST_FRAME ? "" : "--");
 	_autofree_ char *path = litest_write_plugin(tmpdir->path, lua);
-	etrace("%s", lua);
 	_litest_context_destroy_ struct libinput *li =
 		litest_create_context_with_plugindir(tmpdir->path);
 
@@ -1043,8 +1048,6 @@ START_TEST(lua_disable_touchpad_jump_detection)
 		when == DEVICE_NEW ? "" : "-- ",
 		when == FIRST_FRAME ? "" : "-- ");
 
-	etrace("plugin data:\n%s", lua);
-
 	_autofree_ char *path = litest_write_plugin(tmpdir->path, lua);
 	_litest_context_destroy_ struct libinput *li =
 		litest_create_context_with_plugindir(tmpdir->path);
@@ -1076,71 +1079,128 @@ START_TEST(lua_disable_touchpad_jump_detection)
 }
 END_TEST
 
-/* Pre-compiled Lua 5.4 bytecode for the following source:
- *
- *   libinput:register({1})
- *   libinput:connect("new-evdev-device", function(device)
- *       libinput:log_info("loaded from binary lua file")
- *   end)
- *
- * To regenerate:
- *   luac5.4 -o /dev/stdout /tmp/plugin.lua | xxd -i
- */
-static const unsigned char binary_lua_plugin[] = {
-	0x1b, 0x4c, 0x75, 0x61, 0x54, 0x00, 0x19, 0x93, 0x0d, 0x0a, 0x1a, 0x0a, 0x04,
-	0x08, 0x08, 0x78, 0x56, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x28, 0x77, 0x40, 0x01, 0x9b, 0x40, 0x74, 0x65, 0x73, 0x74, 0x2f,
-	0x31, 0x30, 0x2d, 0x62, 0x69, 0x6e, 0x61, 0x72, 0x79, 0x2d, 0x70, 0x6c, 0x75,
-	0x67, 0x69, 0x6e, 0x2e, 0x6c, 0x75, 0x61, 0x80, 0x80, 0x00, 0x01, 0x04, 0x8e,
-	0x51, 0x00, 0x00, 0x00, 0x0b, 0x00, 0x00, 0x00, 0x14, 0x80, 0x00, 0x01, 0x13,
-	0x01, 0x00, 0x01, 0x52, 0x00, 0x00, 0x00, 0x81, 0x01, 0x00, 0x80, 0x4e, 0x01,
-	0x01, 0x00, 0x44, 0x00, 0x03, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x14, 0x80, 0x00,
-	0x02, 0x03, 0x81, 0x01, 0x00, 0xcf, 0x01, 0x00, 0x00, 0x44, 0x00, 0x04, 0x01,
-	0x46, 0x00, 0x01, 0x01, 0x84, 0x04, 0x89, 0x6c, 0x69, 0x62, 0x69, 0x6e, 0x70,
-	0x75, 0x74, 0x04, 0x89, 0x72, 0x65, 0x67, 0x69, 0x73, 0x74, 0x65, 0x72, 0x04,
-	0x88, 0x63, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x04, 0x91, 0x6e, 0x65, 0x77,
-	0x2d, 0x65, 0x76, 0x64, 0x65, 0x76, 0x2d, 0x64, 0x65, 0x76, 0x69, 0x63, 0x65,
-	0x81, 0x01, 0x00, 0x00, 0x81, 0x80, 0x8d, 0x8f, 0x01, 0x00, 0x04, 0x85, 0x8b,
-	0x00, 0x00, 0x00, 0x94, 0x80, 0x01, 0x01, 0x83, 0x01, 0x01, 0x00, 0xc4, 0x00,
-	0x03, 0x01, 0xc7, 0x00, 0x01, 0x00, 0x83, 0x04, 0x89, 0x6c, 0x69, 0x62, 0x69,
-	0x6e, 0x70, 0x75, 0x74, 0x04, 0x89, 0x6c, 0x6f, 0x67, 0x5f, 0x69, 0x6e, 0x66,
-	0x6f, 0x04, 0x9c, 0x6c, 0x6f, 0x61, 0x64, 0x65, 0x64, 0x20, 0x66, 0x72, 0x6f,
-	0x6d, 0x20, 0x62, 0x69, 0x6e, 0x61, 0x72, 0x79, 0x20, 0x6c, 0x75, 0x61, 0x20,
-	0x66, 0x69, 0x6c, 0x65, 0x81, 0x00, 0x00, 0x00, 0x80, 0x85, 0x01, 0x00, 0x00,
-	0x00, 0x01, 0x80, 0x81, 0x87, 0x64, 0x65, 0x76, 0x69, 0x63, 0x65, 0x80, 0x85,
-	0x81, 0x85, 0x5f, 0x45, 0x4e, 0x56, 0x8e, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x01, 0x00, 0x00, 0x02, 0xfe, 0x02, 0x80, 0x80, 0x81, 0x85, 0x5f,
-	0x45, 0x4e, 0x56,
-};
-
-START_TEST(lua_reject_precompiled_files)
+START_TEST(lua_disable_wheel_debouncing)
 {
+	enum when when = litest_test_param_get_i32(test_env->params, "when");
 	_destroy_(tmpdir) *tmpdir = tmpdir_create(NULL);
-
-	/* Write the binary bytecode to a .lua file in the tmpdir.
-	 * Binary (pre-compiled) Lua files must be rejected by the
-	 * plugin loader for security reasons. */
-	_autofree_ char *path = strdup_printf("%s/10-binary-plugin.lua", tmpdir->path);
-	_autoclose_ int fd = open(path, O_WRONLY | O_CREAT, 0644);
-	litest_assert_errno_success(fd);
-
-	ssize_t written = write(fd, binary_lua_plugin, sizeof(binary_lua_plugin));
-	litest_assert_int_eq((int)written, (int)sizeof(binary_lua_plugin));
-	fsync(fd);
-
+	_autofree_ char *lua = strdup_printf(
+		"libinput:register({1})\n"
+		"function frame_handler(device, _, _)\n"
+		"  device:disable_feature(\"wheel-debouncing\")\n"
+		"end\n"
+		"function new_device(device)\n"
+		"  %s device:disable_feature(\"wheel-debouncing\")\n"
+		"  %s device:connect(\"evdev-frame\", frame_handler)\n"
+		"end\n"
+		"libinput:connect(\"new-evdev-device\", new_device)\n",
+		when == DEVICE_NEW ? "" : "--",
+		when == FIRST_FRAME ? "" : "--");
+	_autofree_ char *path = litest_write_plugin(tmpdir->path, lua);
 	_litest_context_destroy_ struct libinput *li =
 		litest_create_context_with_plugindir(tmpdir->path);
+
+	if (libinput_log_get_priority(li) > LIBINPUT_LOG_PRIORITY_DEBUG)
+		libinput_log_set_priority(li, LIBINPUT_LOG_PRIORITY_DEBUG);
+
+	litest_with_logcapture(li, capture) {
+		libinput_plugin_system_load_plugins(li,
+						    LIBINPUT_PLUGIN_SYSTEM_FLAG_NONE);
+
+		_destroy_(litest_device) *dev = litest_add_device(li, LITEST_MOUSE);
+		litest_drain_events(li);
+
+		for (size_t i = 0; i < 4; i++) {
+			/* Send a small wheel events - when debouncing is disabled, they
+			 * should all be delivered immediately without delay */
+			litest_event(dev, EV_REL, REL_WHEEL_HI_RES, 10);
+			litest_event(dev, EV_SYN, SYN_REPORT, 0);
+			litest_dispatch(li);
+
+			_destroy_(libinput_event) *ev = libinput_get_event(li);
+			auto ptrev = litest_is_axis_event(
+				ev,
+				LIBINPUT_EVENT_POINTER_SCROLL_WHEEL,
+				LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL,
+				0);
+			double v120 = libinput_event_pointer_get_scroll_value_v120(
+				ptrev,
+				LIBINPUT_POINTER_AXIS_SCROLL_VERTICAL);
+			litest_assert_double_eq(v120, -10);
+		}
+		litest_assert_empty_queue(li);
+		litest_assert_strv_substring(capture->debugs,
+					     "disabled wheel debouncing on request");
+	}
+}
+END_TEST
+
+START_TEST(lua_remove_plugin_on_timeout)
+{
+	enum when when = litest_test_param_get_i32(test_env->params, "when");
+	_destroy_(tmpdir) *tmpdir = tmpdir_create(NULL);
+	_autofree_ char *lua = strdup_printf(
+		"libinput:register({1})\n"
+		"function infinite_loop(device)\n"
+		"  local i = 0\n"
+		"  while true do\n"
+		"    i = i + 1\n"
+		"  end\n"
+		"end\n"
+		"function new_device(device)\n"
+		"   device:connect(\"evdev-frame\", infinite_loop)\n"
+		"end\n"
+		"%s libinput:connect(\"new-evdev-device\", infinite_loop)\n"
+		"%s libinput:connect(\"new-evdev-device\", new_device)\n",
+		when == DEVICE_NEW ? "" : "--",
+		when == FIRST_FRAME ? "" : "--");
+
+	_autofree_ char *path = litest_write_plugin(tmpdir->path, lua);
+	_litest_context_destroy_ struct libinput *li =
+		litest_create_context_with_plugindir(tmpdir->path);
+	_destroy_(litest_device) *dev = NULL;
 
 	litest_with_logcapture(li, capture) {
 		libinput_plugin_system_load_plugins(li,
 						    LIBINPUT_PLUGIN_SYSTEM_FLAG_NONE);
 		litest_drain_events(li);
 
+		usec_t before = usec_from_now();
+
+		dev = litest_add_device(li, LITEST_MOUSE);
+		litest_drain_events(li);
+
+		if (when == FIRST_FRAME) {
+			litest_event(dev, EV_KEY, BTN_LEFT, 1);
+			litest_event(dev, EV_SYN, SYN_REPORT, 0);
+			litest_dispatch(li);
+			litest_event(dev, EV_KEY, BTN_LEFT, 0);
+			litest_event(dev, EV_SYN, SYN_REPORT, 0);
+			litest_dispatch(li);
+		}
+
+		usec_t after = usec_from_now();
+		usec_t elapsed = usec_delta(after, before);
+
+		/* verify the timeout kicked in around ~1 second (but less than 2s) */
+		litest_assert_int_ge(usec_to_millis(elapsed), 1000U);
+		if (!RUNNING_ON_VALGRIND)
+			litest_assert_int_lt(usec_to_millis(elapsed), 2000U);
+
 		size_t index = 0;
-		litest_assert(
-			strv_find_substring(capture->errors, "Failed to load", &index));
-		litest_assert_str_in(path, capture->errors[index]);
+		litest_assert(strv_find_substring(capture->errors,
+						  "Plugin execution timeout",
+						  &index));
+		litest_assert_str_in("exceeded 1 second", capture->errors[index]);
+
+		litest_assert(strv_find_substring(capture->errors,
+						  "unloading after error",
+						  NULL));
 	}
+	/* device events should go through now */
+	litest_event(dev, EV_KEY, BTN_LEFT, 1);
+	litest_event(dev, EV_SYN, SYN_REPORT, 0);
+	litest_dispatch(li);
+	litest_assert_button_event(li, BTN_LEFT, LIBINPUT_BUTTON_STATE_PRESSED);
 }
 END_TEST
 
@@ -1217,6 +1277,9 @@ TEST_COLLECTION(lua)
 					litest_named_i32(FIRST_FRAME)) {
 		litest_add_parametrized_no_device(lua_disable_button_debounce, params);
 		litest_add_parametrized_no_device(lua_disable_touchpad_jump_detection, params);
+		litest_add_parametrized_no_device(lua_disable_wheel_debouncing, params);
+
+		litest_add_parametrized_no_device(lua_remove_plugin_on_timeout, params);
 	}
 	/* clang-format on */
 }
