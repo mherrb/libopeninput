@@ -139,9 +139,7 @@ wscons_process(struct libinput_device *device, struct wscons_event *wsevent)
 				return;
 			dev->old_value = key;
 		}
-		keycode = keycode_from_uint32_t(
-		                wskey_transcode(
-		                        wscons_device(device)->scanCodeMap, key));
+		keycode = keycode_from_uint32_t(key);
 		keyboard_notify_key(device, time, keycode, kstate);
 		break;
 
@@ -334,14 +332,11 @@ libinput_udev_assign_seat(struct libinput *libinput, const char *seat_id)
 	int fd;
 
 	/* Add standard devices */
-	for (int i = 0; i < 10; i++) {
-		snprintf(name, sizeof(name), "/dev/wskbd%d", i);
-		if ((fd = open_restricted(libinput, name, O_RDWR|O_NONBLOCK)) >= 0) {
-			close_restricted(libinput, fd);
-			libinput_path_add_device(libinput, name);
-		}
+	strlcpy(name, "/dev/wskbd", sizeof(name));
+	if ((fd = open_restricted(libinput, name, O_RDWR|O_NONBLOCK)) >= 0) {
+		close_restricted(libinput, fd);
+		libinput_path_add_device(libinput, name);
 	}
-	/* only one pointer through the mux */
 	strlcpy(name, "/dev/wsmouse", sizeof(name));
 	if ((fd = open_restricted(libinput, name, O_RDWR|O_NONBLOCK)) >= 0) {
 		close_restricted(libinput, fd);
@@ -549,8 +544,6 @@ wscons_device_init(struct wscons_device *wscons_device)
 		wscons_init_accel(wscons_device, LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE);
 	} else if (strncmp(device->devname, "/dev/wskbd", 10) == 0)  {
 		wscons_device->capability = LIBINPUT_DEVICE_CAP_KEYBOARD;
-		if (wscons_keyboard_init(wscons_device) == -1)
-			return -1;
 	}
 	return 0;
 }

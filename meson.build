@@ -453,7 +453,6 @@ src_libinput = src_libfilter + [
 	'src/libinput_openbsd.c',
 	'src/libinput-private-config.c',
 	'src/timer.c',
-	'src/wskbdmap.c',
 	'src/wscons.c'
 ]
 else
@@ -1293,6 +1292,3 @@ configure_file(input : 'tools/libinput-quirks.man',
 ############ output files ############
 configure_file(output : 'config.h', configuration : config_h)
 
-warning('*********************************************************************')
-warning('This branch is no longer updated. Please switch to the "main" branch.')
-warning('*********************************************************************')
